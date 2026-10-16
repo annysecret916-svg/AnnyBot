@@ -17,20 +17,20 @@ const {
 const axios = require('axios');
 const express = require('express');
 
-// ==========================================
-// 🌐 ตั้งค่า Express Web Server & API สำหรับ Launcher
-// ==========================================
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// หน้าแรกเช็กสถานะบอท (Keep-Alive สำหรับ Render)
+// รองรับ Uptime Robot และเว็บตรวจสอบสถานะ
 app.get('/', (req, res) => {
-  res.send('🤖 Bot Discord is running and alive 24/7!');
+  res.status(200).send('🤖 Bot Discord is running and alive 24/7!');
 });
 
-// 🌐 API Endpoint สำหรับให้ Launcher วิ่งเข้ามาเช็ก Whitelist
+app.get('/ping', (req, res) => {
+  res.status(200).send('PONG');
+});
+
 app.get('/api/check-whitelist', async (req, res) => {
     const discordId = req.query.discordId;
 
@@ -75,15 +75,9 @@ app.listen(PORT, () => {
   console.log(`🌐 Web server & API is running on port ${PORT}`);
 });
 
-// ==========================================
-// ⚙️ ตั้งค่าข้อมูลหลักของคุณตรงนี้
-// ==========================================
 const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbyvDdu395a1nY2xcC5BuctTnKct5aFh6IbS4Bf4MROUbB_PFLeX32n2uQrCOIXE2OH5/exec';
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// ------------------------------------------
-// 🛠️ หน่วยความจำชั่วคราวสำหรับ Config และ Anti-Spam
-// ------------------------------------------
 let configData = {
   verifiedRoleId: '', 
 
@@ -146,7 +140,7 @@ client.once('ready', async () => {
       options: [
         {
           name: 'input',
-          type: 3, // STRING type
+          type: 3,
           description: 'กรอก Steam ID, Discord ID หรือชื่อ Steam ที่ต้องการค้นหา',
           required: true
         }
@@ -280,7 +274,6 @@ client.on('guildMemberRemove', async member => {
 client.on('interactionCreate', async interaction => {
   if (interaction.isButton() || interaction.isModalSubmit()) {
     if (interaction.member && interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      // แอดมินไม่ต้องเช็ค
     } else {
       const userId = interaction.user.id;
       const currentTime = Date.now();
