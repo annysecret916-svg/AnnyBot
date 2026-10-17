@@ -171,7 +171,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// ระบบ Voice Join to Create (สร้างห้องคุยอัตโนมัติ)
+// ระบบ Voice Join to Create (สร้างห้องคุยอัตโนมัติ - ไม่จำกัดคน)
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -186,7 +186,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         name: `🔪・Voice chat 🩸・${member.user.username}`,
         type: ChannelType.GuildVoice,
         parent: parentCategory,
-        userLimit: 5,
+        userLimit: 0, // 0 หมายถึงไม่จำกัดจำนวนคน
         permissionOverwrites: [
           {
             id: guild.id,
@@ -384,7 +384,7 @@ client.on('interactionCreate', async interaction => {
 
     const embed = new EmbedBuilder()
       .setTitle('🎮 ──・[ HSHO : Room Creator Center ]・── 🧸')
-      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อสร้างห้องเกมส่วนตัวได้ทันที\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
+      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อตั้งชื่อและสร้างห้องเกมส่วนตัว (ไม่จำกัดจำนวนคน) ได้ทันที\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
       .setColor('#ff6b81')
       .setTimestamp();
 
@@ -398,22 +398,44 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // ปุ่มกดสร้างห้อง Home Sweet Home Online แบบ 1-Click (สร้างปุ๊บสร้างเลย)
+  // ปุ่มกดสร้างห้อง HSHO -> เด้ง Modal ให้ผู้เล่นพิมพ์ตั้งชื่อห้อง (ไม่จำกัดจำนวนคน)
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
+    const modal = new ModalBuilder()
+      .setCustomId('modal_create_hsho_room')
+      .setTitle('🔪 ตั้งชื่อห้อง Home Sweet Home Online');
+
+    const roomNameInput = new TextInputBuilder()
+      .setCustomId('hsho_room_name')
+      .setLabel('ชื่อห้อง Voice ตามใจคุณ (เช่น ทีมตบผีสุดโหด)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('พิมพ์ชื่อห้องที่ต้องการที่นี่เลยค่ะ...')
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(roomNameInput)
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  // Modal Submit สร้างห้อง Voice ตามชื่อที่ผู้เล่นพิมพ์เข้ามา (ตั้ง userLimit เป็น 0 แบบไม่จำกัดคนอัตโนมัติ)
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
+
+    const roomName = interaction.fields.getTextInputValue('hsho_room_name');
 
     try {
       const guild = interaction.guild;
       const member = interaction.member;
-
-      const roomName = `🔪・Voice chat 🩸・${member.user.username}`;
       const currentCategory = interaction.channel.parent;
 
+      const finalRoomName = `🔪・${roomName} 🩸・${member.user.username}`;
+
       const hshoChannel = await guild.channels.create({
-        name: roomName,
+        name: finalRoomName,
         type: ChannelType.GuildVoice,
         parent: currentCategory ? currentCategory.id : null,
-        userLimit: 5,
+        userLimit: 0, // 0 = ไม่จำกัดจำนวนคนเข้าห้อง
         permissionOverwrites: [
           {
             id: guild.id,
@@ -428,6 +450,16 @@ client.on('interactionCreate', async interaction => {
               PermissionFlagsBits.DeafenMembers
             ],
           },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ManageChannels,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.Speak,
+              PermissionFlagsBits.MoveMembers,
+              PermissionFlagsBits.ViewChannel
+            ],
+          }
         ],
       });
 
@@ -439,14 +471,14 @@ client.on('interactionCreate', async interaction => {
 
       const successEmbed = new EmbedBuilder()
         .setTitle('🎉 สร้างห้องเกมสำเร็จแล้วค่ะ!')
-        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 หัวหน้าห้อง: <@${member.id}>\n👥 คุณสามารถคลิกขวาเปลี่ยนชื่อหรือตั้งค่าห้องเพิ่มเติมได้เลยค่ะ!`)
+        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 ชื่อห้อง: **${roomName}**\n👥 จำนวนผู้เล่น: **ไม่จำกัดคน (Unlimited)**\n\n*ขอให้สนุกกับการเล่นเกมนะคะ!*`)
         .setColor('#2ecc71');
 
       return interaction.editReply({ embeds: [successEmbed] });
     } catch (err) {
       console.error('❌ ไม่สามารถสร้างห้อง HSHO ได้:', err);
       return interaction.editReply({ 
-        content: '❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ! โปรดตรวจสอบว่าบอทมียศ **Administrator** หรือสิทธิ์จัดการช่อง (Manage Channels) แล้วหรือยังนะคะ' 
+        content: `❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ: \`${err.message}\`\n👉 โปรดตรวจสอบว่าบอทมียศ **Administrator** หรือไม่นะคะ` 
       });
     }
   }
