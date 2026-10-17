@@ -82,33 +82,32 @@ let configData = {
   verifiedRoleId: '', 
 
   verifyTitle: '🔒 Whitelist Registration / ลงทะเบียน Whitelist',
-  verifyDesc: 'กดปุ่มด้านล่างเพื่อเลือกภาษาในการลงทะเบียน หรือคลิกดูคู่มือการหาข้อมูล Steam ID / Discord ID ได้เลยครับ!',
+  verifyDesc: 'กดปุ่มด้านล่างเพื่อเลือกภาษาในการลงทะเบียน หรือคลิกดูคู่มือการหาข้อมูล Steam ID / Discord ID ได้เลยค่ะ!',
   verifyImage: '', 
   verifyColor1: '#FF3366',
   verifyColor2: '#3498DB',
 
   welcomeChannelId: '1560286143956648031',
   welcomeTitle: '🎉 ยินดีต้อนรับสู่ {server}! 🎉',
-  welcomeDesc: 'สวัสดีคุณ {user} ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์ของเราอย่างเป็นทางการครับ!\n\n📌 **คำแนะนำ:** กรุณาไปที่ห้องยืนยันตัวตนเพื่อลงทะเบียน Whitelist ก่อนเล่นนะครับ\n👥 สมาชิกปัจจุบัน: **{memberCount}** คน',
+  welcomeDesc: 'สวัสดีคุณ {user} ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์ของเราอย่างเป็นทางการค่ะ!\n\n📌 **คำแนะนำ:** กรุณาไปที่ห้องยืนยันตัวตนเพื่อลงทะเบียน Whitelist ก่อนเล่นนะคะ\n👥 สมาชิกปัจจุบัน: **{memberCount}** คน',
   welcomeImage: 'https://cdn.discordapp.com/attachments/1560286143956648031/1560305181277692064/image.png',
   welcomeColor1: '#00FFCC',
   welcomeColor2: '#3399FF',
 
   goodbyeChannelId: '1560286143956648031',
   goodbyeTitle: '👋 สมาชิกออกจากเซิร์ฟเวอร์',
-  goodbyeDesc: 'คุณ **{username}** ได้ออกจาก {server} ไปแล้ว...\nขอให้โชคดี แล้วพบกันใหม่ครับ!\n📉 สมาชิกคงเหลือ: **{memberCount}** คน',
+  goodbyeDesc: 'คุณ **{username}** ได้ออกจาก {server} ไปแล้ว...\nขอให้โชคดี แล้วพบกันใหม่ค่ะ!\n📉 สมาชิกคงเหลือ: **{memberCount}** คน',
   goodbyeImage: 'https://cdn.discordapp.com/attachments/1560286143956648031/1560299610185015328/2026-10-15_213204.png',
   goodbyeColor1: '#FF3366',
   goodbyeColor2: '#FF9900',
 
-  // ค่าสำหรับระบบ Join to Create (สามารถเปลี่ยน ID ห้องต้นแบบได้ตามต้องการ)
   joinToCreateChannelId: '' 
 };
 
 const userMessageHistory = new Map(); 
 const userVerifyHistory = new Map(); 
 const spamOffenseCount = new Map();  
-const activeTemporaryChannels = new Map(); // เก็บข้อมูลห้อง Voice ชั่วคราวของผู้เล่น
+const activeTemporaryChannels = new Map(); 
 
 const client = new Client({ 
   intents: [
@@ -178,19 +177,16 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
   if (!member || member.user.bot) return;
 
-  // ตรวจสอบว่าผู้เล่นเข้ามาในห้อง Join to Create หรือไม่
   if (configData.joinToCreateChannelId && newState.channelId === configData.joinToCreateChannelId) {
-    // ส่ง Modal หรือให้บอทเปิด Prompt ตั้งชื่อห้องโดยใช้ระบบ Interaction หรือเปิดใช้งานผ่าน Modal 
-    // (ใน Discord บนมือถือและคอมพิวเตอร์ การเด้ง Modal จาก Event Voice ตรงๆ อาจติดข้อจำกัดของ Discord API จึงใช้ระบบสร้างห้องให้อัตโนมัติในชื่อผู้ใช้ แล้วให้ย้าย/เปลี่ยนชื่อ หรือส่งข้อความส่วนตัวไปให้ตั้งชื่อแทนครับ)
     try {
       const guild = newState.guild;
       const parentCategory = newState.channel.parent;
 
       const userVoiceChannel = await guild.channels.create({
-        name: `🎀・${member.user.username} 🛋️`,
+        name: `🔪・Voice chat 🩸・${member.user.username}`,
         type: ChannelType.GuildVoice,
         parent: parentCategory,
-        userLimit: 10,
+        userLimit: 5,
         permissionOverwrites: [
           {
             id: guild.id,
@@ -198,23 +194,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           },
           {
             id: member.id,
-            allow: [PermissionFlagsBits.ManageChannel, PermissionFlagsBits.MoveMembers],
+            allow: [PermissionFlagsBits.ManageChannel, PermissionFlagsBits.MoveMembers, PermissionFlagsBits.MuteMembers],
           },
         ],
       });
 
-      // ย้ายสมาชิกเข้าไปห้องใหม่ทันที
       await member.voice.setChannel(userVoiceChannel);
       activeTemporaryChannels.set(userVoiceChannel.id, member.id);
 
-      // ส่งข้อความแจ้งเตือนส่วนตัววิธีเปลี่ยนชื่อห้อง
-      await member.send(`✨ **สร้างห้องส่วนตัวสำเร็จแล้วค่ะ!**\nคุณสามารถกดคลิกขวาที่ห้อง Voice ของคุณแล้วเลือก **"Edit Channel" (แก้ไขห้อง)** เพื่อเปลี่ยนชื่อและตั้งค่าตามใจชอบได้เลยนะคะ 🌸`).catch(() => {});
+      await member.send(`✨ **สร้างห้องส่วนตัวสำเร็จแล้วค่ะ!**\nคุณสามารถคลิกขวาที่ห้อง Voice ของคุณแล้วเลือก **"Edit Channel" (แก้ไขห้อง)** เพื่อเปลี่ยนชื่อตามใจชอบได้เลยนะคะ 🌸`).catch(() => {});
     } catch (err) {
       console.error('❌ ไม่สามารถสร้างห้อง Voice ชั่วคราวได้:', err);
     }
   }
 
-  // ตรวจสอบกรณีห้องว่างเปล่า ให้ลบห้องทิ้งอัตโนมัติ
   if (oldState.channel && activeTemporaryChannels.has(oldState.channelId)) {
     if (oldState.channel.members.size === 0) {
       try {
@@ -391,9 +384,8 @@ client.on('interactionCreate', async interaction => {
 
     const embed = new EmbedBuilder()
       .setTitle('🎮 ──・[ HSHO : Room Creator Center ]・── 🧸')
-      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อสร้างห้องเล่นเกมส่วนตัวได้ทันที\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
+      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อสร้างห้องเกมส่วนตัวได้ทันที\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
       .setColor('#ff6b81')
-      .setImage('https://cdn.discordapp.com/attachments/1560286143956648031/1560305181277692064/image.png')
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -406,73 +398,56 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // ปุ่มกดสร้างห้อง Home Sweet Home Online
+  // ปุ่มกดสร้างห้อง Home Sweet Home Online แบบ 1-Click (สร้างปุ๊บสร้างเลย)
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
-    const modal = new ModalBuilder()
-      .setCustomId('modal_create_hsho_room')
-      .setTitle('🔪 ตั้งค่าห้อง Home Sweet Home Online');
-
-    const roomNameInput = new TextInputBuilder()
-      .setCustomId('hsho_room_name')
-      .setLabel('ชื่อห้องเกมที่คุณต้องการ (เช่น ทีมตบผีสุดโหด)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('พิมพ์ชื่อห้องที่นี่เลยค่ะ...')
-      .setRequired(true);
-
-    const roomLimitInput = new TextInputBuilder()
-      .setCustomId('hsho_room_limit')
-      .setLabel('จำนวนผู้เล่นสูงสุด (เช่น 5 คน)')
-      .setStyle(TextInputStyle.Short)
-      .setValue('5')
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(roomNameInput),
-      new ActionRowBuilder().addComponents(roomLimitInput)
-    );
-
-    return interaction.showModal(modal);
-  }
-
-  // Modal Submit สร้างห้องเกม HSHO
-  if (interaction.isModalSubmit() && interaction.customId === 'modal_create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
-
-    const roomName = interaction.fields.getTextInputValue('hsho_room_name');
-    const roomLimit = parseInt(interaction.fields.getTextInputValue('hsho_room_limit')) || 5;
 
     try {
       const guild = interaction.guild;
       const member = interaction.member;
 
-      // สร้างห้อง Voice สำหรับเกม HSHO โดยเฉพาะ
+      const roomName = `🔪・Voice chat 🩸・${member.user.username}`;
+      const currentCategory = interaction.channel.parent;
+
       const hshoChannel = await guild.channels.create({
-        name: `🔪・${roomName} 🩸`,
+        name: roomName,
         type: ChannelType.GuildVoice,
-        userLimit: roomLimit > 99 ? 99 : roomLimit,
+        parent: currentCategory ? currentCategory.id : null,
+        userLimit: 5,
         permissionOverwrites: [
           {
             id: guild.id,
-            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ViewChannel],
           },
           {
             id: member.id,
-            allow: [PermissionFlagsBits.ManageChannel, PermissionFlagsBits.MoveMembers],
+            allow: [
+              PermissionFlagsBits.ManageChannel, 
+              PermissionFlagsBits.MoveMembers,
+              PermissionFlagsBits.MuteMembers,
+              PermissionFlagsBits.DeafenMembers
+            ],
           },
         ],
       });
 
       activeTemporaryChannels.set(hshoChannel.id, member.id);
 
+      if (member.voice.channel) {
+        await member.voice.setChannel(hshoChannel).catch(() => {});
+      }
+
       const successEmbed = new EmbedBuilder()
         .setTitle('🎉 สร้างห้องเกมสำเร็จแล้วค่ะ!')
-        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 ชื่อห้อง: **${roomName}**\n👥 จำกัดผู้เล่น: **${roomLimit} คน**\n\n*ขอให้สนุกกับการล่าผีและเอาชีวิตรอดนะคะ!*`)
+        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 หัวหน้าห้อง: <@${member.id}>\n👥 คุณสามารถคลิกขวาเปลี่ยนชื่อหรือตั้งค่าห้องเพิ่มเติมได้เลยค่ะ!`)
         .setColor('#2ecc71');
 
       return interaction.editReply({ embeds: [successEmbed] });
     } catch (err) {
       console.error('❌ ไม่สามารถสร้างห้อง HSHO ได้:', err);
-      return interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ กรุณาลองใหม่อีกครั้งนะคะ' });
+      return interaction.editReply({ 
+        content: '❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ! โปรดตรวจสอบว่าบอทมียศ **Administrator** หรือสิทธิ์จัดการช่อง (Manage Channels) แล้วหรือยังนะคะ' 
+      });
     }
   }
 
