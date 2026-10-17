@@ -76,6 +76,7 @@ app.listen(PORT, () => {
 
 const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbyvDdu395a1nY2xcC5BuctTnKct5aFh6IbS4Bf4MROUbB_PFLeX32n2uQrCOIXE2OH5/exec';
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const GUILD_ID = process.env.GUILD_ID;
 
 let configData = {
   verifiedRoleId: '', 
@@ -161,16 +162,24 @@ client.once('ready', async () => {
     }
   ];
 
+  if (!BOT_TOKEN || !GUILD_ID) {
+    console.error('❌ กรุณาตั้งค่า BOT_TOKEN และ GUILD_ID ใน Environment Variables');
+    return;
+  }
+
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
 
   try {
+    // อัปเดตการลงทะเบียน Slash Commands แบบ Specific Guild เพื่อให้แสดงผลทันที
     await rest.put(
-      Routes.applicationCommands(client.user.id),
+      Routes.applicationGuildCommands(client.user.id, GUILD_ID),
       { body: commands },
     );
-    console.log('🎉 ลงทะเบียนคำสั่ง Slash Commands ทั้งหมดสำเร็จ!');
+
+    console.log('✅ ลงทะเบียน Slash Commands ในเซิร์ฟเวอร์สำเร็จ!');
+    console.log('📋 คำสั่งที่ลงทะเบียน:', commands.map(c => `/${c.name}`).join(', '));
   } catch (error) {
-    console.error('❌ เกิดข้อผิดพลาดในการลงทะเบียนคำสั่ง:', error);
+    console.error('❌ ลงทะเบียน Slash Commands ไม่สำเร็จ:', error);
   }
 });
 
