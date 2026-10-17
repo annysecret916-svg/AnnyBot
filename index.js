@@ -175,7 +175,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// 1. ระบบ Voice Join to Create (เตะออกแล้วส่งปุ่มให้กดเปิด Modal ตั้งชื่อและ Limit)
+// 1. ระบบ Voice Join (เตะออกแล้วส่งปุ่มให้กดเปิด Modal ตั้งชื่อและ Limit)
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -183,10 +183,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
   if (configData.joinToCreateChannelId && newState.channelId === configData.joinToCreateChannelId) {
     try {
-      // เอาผู้ใช้ออกจากห้อง JTC ทันทีเพื่อไม่ให้ค้างอยู่ในห้องต้นแบบ
       await member.voice.setChannel(null).catch(() => {});
 
-      // ส่งปุ่มให้ผู้ใช้กดเพื่อเปิด Modal ตั้งชื่อและ Limit ส่วนตัวทาง DM
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`open_jtc_modal_${newState.guild.id}`)
@@ -206,7 +204,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
   }
 
-  // ลบห้อง Voice ชั่วคราวเมื่อไม่มีคนอยู่
   if (oldState.channel && activeTemporaryChannels.has(oldState.channelId)) {
     if (oldState.channel.members.size === 0) {
       try {
