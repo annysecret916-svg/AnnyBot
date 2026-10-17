@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// รองรับ Uptime Robot และเว็บตรวจสอบสถานะ 24/7
 app.get('/', (req, res) => {
   res.status(200).send('🤖 Bot Discord is running and alive 24/7!');
 });
@@ -137,6 +138,11 @@ client.once('ready', async () => {
       default_member_permissions: PermissionFlagsBits.Administrator.toString(),
     },
     {
+      name: 'setup-server',
+      description: '🏗️ สร้างหมวดหมู่และช่อง Text Channels (ชื่อไทยสั้นกระชับ ไม่ซ้ำกัน)',
+      default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+    },
+    {
       name: 'config-panel',
       description: 'เปิดแผงควบคุมตั้งค่าระบบและยศอัตโนมัติ',
       default_member_permissions: PermissionFlagsBits.Administrator.toString(),
@@ -169,7 +175,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// 1. ระบบ Voice Join to Create
+// 1. ระบบ Voice Join to Create (เตะออกแล้วส่งปุ่มให้กดเปิด Modal ตั้งชื่อและ Limit)
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -177,71 +183,37 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
   if (configData.joinToCreateChannelId && newState.channelId === configData.joinToCreateChannelId) {
     try {
-      const guild = newState.guild;
-      const parentCategory = newState.channel.parent;
+      // เอาผู้ใช้ออกจากห้อง JTC ทันทีเพื่อไม่ให้ค้างอยู่ในห้องต้นแบบ
+      await member.voice.setChannel(null).catch(() => {});
 
-      const defaultRoomName = `๛ Voice chat ឵឵𐐪𐑯 ${member.user.username}`;
+      // ส่งปุ่มให้ผู้ใช้กดเพื่อเปิด Modal ตั้งชื่อและ Limit ส่วนตัว
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`open_jtc_modal_${newState.guild.id}`)
+          .setLabel('⚙️ ตั้งชื่อและ Limit ห้องของคุณ')
+          .setStyle(ButtonStyle.Success)
+      );
 
-      const userVoiceChannel = await guild.channels.create({
-        name: defaultRoomName,
-        type: ChannelType.GuildVoice,
-        parent: parentCategory ? parentCategory.id : null,
-        userLimit: 0,
-        permissionOverwrites: [
-          {
-            id: guild.id,
-            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ViewChannel],
-          },
-          {
-            id: member.id,
-            allow: [
-              PermissionFlagsBits.ManageChannels, 
-              PermissionFlagsBits.MoveMembers
-            ],
-          },
-          {
-            id: client.user.id,
-            allow: [
-              PermissionFlagsBits.ManageChannels,
-              PermissionFlagsBits.Connect,
-              PermissionFlagsBits.Speak,
-              PermissionFlagsBits.MoveMembers,
-              PermissionFlagsBits.ViewChannel
-            ],
-          }
-        ],
+      await member.send({
+        content: `✨ **คุณเพิ่งกดเข้าห้อง Join to Create!**\nกรุณากดปุ่มด้านล่างเพื่อตั้งชื่อห้องและกำหนดจำนวนคน (Limit) ได้เลยค่ะ 🌸`,
+        components: [row]
+      }).catch(() => {
+        console.log('ไม่สามารถส่ง DM หาผู้ใช้ได้ (ผู้ใช้อาจปิดรับ DM)');
       });
 
-      await member.voice.setChannel(userVoiceChannel).catch(() => {});
-      activeTemporaryChannels.set(userVoiceChannel.id, member.id);
-
-      try {
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`rename_room_${userVoiceChannel.id}`)
-            .setLabel('💖 ตั้งชื่อห้องของคุณ')
-            .setStyle(ButtonStyle.Success)
-        );
-
-        await member.send({
-          content: `✨ **สร้างห้อง Voice ส่วนตัวสำเร็จแล้วค่ะ!**\nคุณสามารถกดปุ่มด้านล่างเพื่อเปลี่ยนชื่อห้องสไตล์น่ารักๆ ได้ตามใจชอบเลยนะคะ 🌸`,
-          components: [row]
-        });
-      } catch (e) {
-        console.log('ไม่สามารถส่ง DM หาผู้ใช้ได้ (DM อาจปิดอยู่)');
-      }
     } catch (err) {
-      console.error('❌ ไม่สามารถสร้างห้อง Voice ชั่วคราวได้:', err);
+      console.error('❌ Error handling JTC voice state:', err);
     }
   }
 
+  // ลบห้อง Voice ชั่วคราวเมื่อไม่มีคนอยู่
   if (oldState.channel && activeTemporaryChannels.has(oldState.channelId)) {
     if (oldState.channel.members.size === 0) {
       try {
         await oldState.channel.delete();
         activeTemporaryChannels.delete(oldState.channelId);
       } catch (err) {
-        console.error('❌ ไม่สามารถลบห้อง Voice ที่ว่างเปล่าได้:', err);
+        console.error('❌ ไม่สามารถลบห้อง Voice ได้:', err);
       }
     }
   }
@@ -403,6 +375,160 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 1. กดปุ่มจาก DM เพื่อเปิด Modal ตั้งชื่อห้องและ Limit (สำหรับ JTC)
+  if (interaction.isButton() && interaction.customId.startsWith('open_jtc_modal_')) {
+    const modal = new ModalBuilder()
+      .setCustomId('modal_create_jtc_room')
+      .setTitle('✨ ตั้งค่าห้อง Voice ส่วนตัวของคุณ');
+
+    const nameInput = new TextInputBuilder()
+      .setCustomId('jtc_room_name')
+      .setLabel('ชื่อห้อง Voice (เช่น ทีมตบผี, เม้ามอย)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('พิมพ์ชื่อห้องที่ต้องการที่นี่...')
+      .setRequired(true);
+
+    const limitInput = new TextInputBuilder()
+      .setCustomId('jtc_room_limit')
+      .setLabel('จำนวนคนสูงสุด (Limit) เช่น 0 = ไม่จำกัด, 5')
+      .setStyle(TextInputStyle.Short)
+      .setValue('0')
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(nameInput),
+      new ActionRowBuilder().addComponents(limitInput)
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  // 2. รับค่าชื่อห้องและ Limit จาก Modal แล้วสร้างห้อง Voice ทันที
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_create_jtc_room') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const roomName = interaction.fields.getTextInputValue('jtc_room_name');
+    const userLimitStr = interaction.fields.getTextInputValue('jtc_room_limit');
+    const userLimit = parseInt(userLimitStr) || 0;
+
+    try {
+      const guild = interaction.guild;
+      const member = await guild.members.fetch(interaction.user.id);
+      
+      const jtcChannel = guild.channels.cache.get(configData.joinToCreateChannelId);
+      const parentCategory = jtcChannel ? jtcChannel.parent : null;
+
+      const formattedName = `╰ -💖 [ ${roomName} ]`;
+
+      const newVoiceChannel = await guild.channels.create({
+        name: formattedName,
+        type: ChannelType.GuildVoice,
+        parent: parentCategory ? parentCategory.id : null,
+        userLimit: userLimit,
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ViewChannel],
+          },
+          {
+            id: member.id,
+            allow: [
+              PermissionFlagsBits.ManageChannels, 
+              PermissionFlagsBits.MoveMembers
+            ],
+          },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ManageChannels,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.Speak,
+              PermissionFlagsBits.MoveMembers,
+              PermissionFlagsBits.ViewChannel
+            ],
+          }
+        ],
+      });
+
+      activeTemporaryChannels.set(newVoiceChannel.id, member.id);
+
+      if (member.voice) {
+        await member.voice.setChannel(newVoiceChannel).catch(() => {});
+      }
+
+      return interaction.editReply({ 
+        content: `🎉 **สร้างห้อง Voice สำเร็จแล้วค่ะ!**\n✨ ชื่อห้อง: **${formattedName}**\n👥 Limit: **${userLimit === 0 ? 'ไม่จำกัด' : userLimit + ' คน'}**\n<#${newVoiceChannel.id}>` 
+      });
+
+    } catch (err) {
+      console.error('❌ Error creating custom JTC room:', err);
+      return interaction.editReply({ content: `❌ เกิดข้อผิดพลาดในการสร้างห้อง: ${err.message}` });
+    }
+  }
+
+  // คำสั่งสร้างโครงสร้างห้องทั้งหมดในเซิร์ฟเวอร์ (/setup-server)
+  if (interaction.isChatInputCommand() && interaction.commandName === 'setup-server') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const guild = interaction.guild;
+
+    try {
+      const helloCategory = await guild.channels.create({
+        name: '✨ ──・[ HELLO & WELCOME ]・── 🧸',
+        type: ChannelType.GuildCategory
+      });
+      await guild.channels.create({ name: '╭🚪・welcome [ หน้าหลัก ]', type: ChannelType.GuildText, parent: helloCategory.id });
+      await guild.channels.create({ name: '╰👋・goodbye [ อำลา ]', type: ChannelType.GuildText, parent: helloCategory.id });
+
+      const announceCategory = await guild.channels.create({
+        name: '📢 ──・[ ANNOUNCEMENTS & INFO ]・── 📌',
+        type: ChannelType.GuildCategory
+      });
+      const announceChannels = [
+        '╭ -📢・announcement [ แจ้งเตือน ]',
+        '| 📖・rules [ ข้อบังคับ ]',
+        '| 🔝・updates [ อัปเดต ]',
+        '| ⭐・credits [ เครดิต ]',
+        '| 💖・support [ ช่วยเหลือ ]',
+        '| 🟢・server-status [ เซิร์ฟเวอร์ ]',
+        '| 🎃・spoilers [ สปอยล์ ]',
+        '| ⁉️・clarification [ ชี้แจง ]',
+        '| 🏅・permanent-link [ ลิงก์ถาวร ]',
+        '| 🎮・downloads [ ดาวน์โหลด ]',
+        '| blacklist 🚫',
+        '| 📜・summon [ ตามตัว ]',
+        '╰ -👥・partners [ พันธมิตร ]'
+      ];
+      for (const channelName of announceChannels) {
+        await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: announceCategory.id });
+      }
+
+      const generalCategory = await guild.channels.create({
+        name: '💬 ──・[ GENERAL & COMMUNITY ]・── 🌸',
+        type: ChannelType.GuildCategory
+      });
+      const generalChannels = [
+        '╭ -⭐・general [ ทั่วไป ]',
+        '| 🔍・find-players [ หาตี้ ]',
+        '| 😶〰️・bug-reports [ แจ้งบัค ]',
+        '| 💖・buff-suggestions [ บัฟ/ปรับสมดุล ]',
+        '| 🆚・room-codes [ โค้ดห้อง ]',
+        '╰ -💭・q-and-a [ พูดคุย/ถามตอบ ]'
+      ];
+      for (const channelName of generalChannels) {
+        await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: generalCategory.id });
+      }
+
+      return interaction.editReply({ content: '🎉 **สร้างหมวดหมู่และ Text Channels เรียบร้อยแล้วค่ะ!** 🌸' });
+    } catch (err) {
+      console.error('❌ เกิดข้อผิดพลาดในการสร้างเซิร์ฟเวอร์:', err);
+      return interaction.editReply({ content: `❌ เกิดข้อผิดพลาด: \`${err.message}\`` });
+    }
+  }
+
   // คำสั่งติดตั้งแผงสร้างห้อง (Room Creator Panel)
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-roomcreator') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -425,7 +551,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // 2. ปุ่มกดสร้างห้อง HSHO -> สร้างห้องทันทีแบบ 1-Click
+  // ปุ่มกดสร้างห้อง HSHO -> สร้างห้องทันทีแบบ 1-Click
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
 
@@ -483,46 +609,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply({ 
         content: `❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ: \`${err.message}\`` 
       });
-    }
-  }
-
-  // 3. กดปุ่มตั้งชื่อห้องจาก DM (สำหรับห้อง Join to Create)
-  if (interaction.isButton() && interaction.customId.startsWith('rename_room_')) {
-    const channelId = interaction.customId.replace('rename_room_', '');
-    
-    const modal = new ModalBuilder()
-      .setCustomId(`modal_rename_${channelId}`)
-      .setTitle('✨ ตั้งชื่อห้อง Voice ของคุณ');
-
-    const nameInput = new TextInputBuilder()
-      .setCustomId('new_room_name')
-      .setLabel('พิมพ์ชื่อห้อง (เช่น ทีมตบผี หรือ เม้ามอย)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('พิมพ์ชื่อห้องที่นี่เลยค่ะ...')
-      .setRequired(true);
-
-    modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
-    return interaction.showModal(modal);
-  }
-
-  // 4. รับค่าชื่อห้องใหม่จาก Modal แล้วเปลี่ยนชื่อห้อง Voice ทันทีตามสไตล์ Ref
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_rename_')) {
-    await interaction.deferReply({ ephemeral: true });
-    
-    const channelId = interaction.customId.replace('modal_rename_', '');
-    const newName = interaction.fields.getTextInputValue('new_room_name');
-
-    try {
-      const channel = await client.channels.fetch(channelId);
-      if (channel) {
-        const formattedName = `╰ -💖 [ ${newName} ]`;
-        await channel.setName(formattedName);
-        return interaction.editReply({ content: `✅ **เปลี่ยนชื่อห้องเป็น "${formattedName}" เรียบร้อยแล้วค่ะ!** 🌸` });
-      } else {
-        return interaction.editReply({ content: '❌ ไม่พบห้อง Voice ดังกล่าว (ห้องอาจถูกปิดไปแล้ว)' });
-      }
-    } catch (err) {
-      return interaction.editReply({ content: `❌ ไม่สามารถเปลี่ยนชื่อห้องได้: ${err.message}` });
     }
   }
 
