@@ -87,17 +87,17 @@ let configData = {
   verifyColor1: '#FF3366',
   verifyColor2: '#3498DB',
 
-  welcomeChannelId: '1560286143956648031',
+  welcomeChannelId: '',
   welcomeTitle: '🎉 ยินดีต้อนรับสู่ {server}! 🎉',
   welcomeDesc: 'สวัสดีคุณ {user} ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์ของเราอย่างเป็นทางการค่ะ!\n\n📌 **คำแนะนำ:** กรุณาไปที่ห้องยืนยันตัวตนเพื่อลงทะเบียน Whitelist ก่อนเล่นนะคะ\n👥 สมาชิกปัจจุบัน: **{memberCount}** คน',
-  welcomeImage: 'https://cdn.discordapp.com/attachments/1560286143956648031/1560305181277692064/image.png',
+  welcomeImage: '',
   welcomeColor1: '#00FFCC',
   welcomeColor2: '#3399FF',
 
-  goodbyeChannelId: '1560286143956648031',
+  goodbyeChannelId: '',
   goodbyeTitle: '👋 สมาชิกออกจากเซิร์ฟเวอร์',
   goodbyeDesc: 'คุณ **{username}** ได้ออกจาก {server} ไปแล้ว...\nขอให้โชคดี แล้วพบกันใหม่ค่ะ!\n📉 สมาชิกคงเหลือ: **{memberCount}** คน',
-  goodbyeImage: 'https://cdn.discordapp.com/attachments/1560286143956648031/1560299610185015328/2026-10-15_213204.png',
+  goodbyeImage: '',
   goodbyeColor1: '#FF3366',
   goodbyeColor2: '#FF9900',
 
@@ -275,6 +275,7 @@ client.on('messageCreate', async message => {
 // ระบบ Welcome & Goodbye
 // ==========================================
 client.on('guildMemberAdd', async member => {
+  if (!configData.welcomeChannelId) return;
   const channel = member.guild.channels.cache.get(configData.welcomeChannelId);
   if (!channel) return;
 
@@ -307,6 +308,7 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('guildMemberRemove', async member => {
+  if (!configData.goodbyeChannelId) return;
   const channel = member.guild.channels.cache.get(configData.goodbyeChannelId);
   if (!channel) return;
 
@@ -779,6 +781,8 @@ client.on('interactionCreate', async interaction => {
 
     const roleStatus = configData.verifiedRoleId ? `<@&${configData.verifiedRoleId}>` : '❌ ยังไม่ได้ตั้งค่า';
     const joinCreateStatus = configData.joinToCreateChannelId ? `<#${configData.joinToCreateChannelId}>` : '❌ ยังไม่ได้ตั้งค่า';
+    const welcomeStatus = configData.welcomeChannelId ? `<#${configData.welcomeChannelId}>` : '❌ ยังไม่ได้ตั้งค่า';
+    const goodbyeStatus = configData.goodbyeChannelId ? `<#${configData.goodbyeChannelId}>` : '❌ ยังไม่ได้ตั้งค่า';
 
     const panelEmbed = new EmbedBuilder()
       .setTitle('👑 Admin Management Suite & Customization')
@@ -787,8 +791,9 @@ client.on('interactionCreate', async interaction => {
       .addFields(
         { name: '🎖️ ยศหลัง Verify สำเร็จ', value: roleStatus, inline: false },
         { name: '🛋️ ห้อง Join to Create (Voice)', value: joinCreateStatus, inline: false },
-        { name: '🔒 ระบบ Verify ปัจจุบัน', value: `หัวข้อ: ${configData.verifyTitle}`, inline: false },
-        { name: '✨ ระบบ Welcome ปัจจุบัน', value: `ห้อง: <#${configData.welcomeChannelId}>\nหัวข้อ: ${configData.welcomeTitle}`, inline: false }
+        { name: '✨ ห้อง Welcome', value: welcomeStatus, inline: true },
+        { name: '👋 ห้อง Goodbye', value: goodbyeStatus, inline: true },
+        { name: '🔒 ระบบ Verify ปัจจุบัน', value: `หัวข้อ: ${configData.verifyTitle}`, inline: false }
       );
 
     const row1 = new ActionRowBuilder().addComponents(
@@ -798,8 +803,8 @@ client.on('interactionCreate', async interaction => {
     );
 
     const row2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('edit_welcome').setLabel('⚙️ ตั้งค่า Welcome').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('edit_goodbye').setLabel('⚙️ ตั้งค่า Goodbye').setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId('edit_welcome').setLabel('✨ ตั้งค่า Welcome Channel').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('edit_goodbye').setLabel('👋 ตั้งค่า Goodbye Channel').setStyle(ButtonStyle.Danger)
     );
 
     return interaction.reply({ embeds: [panelEmbed], components: [row1, row2], ephemeral: true });
@@ -838,37 +843,33 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.isButton() && interaction.customId === 'edit_welcome') {
-    const modal = new ModalBuilder().setCustomId('modal_config_welcome').setTitle('✨ ตั้งค่าระบบ Welcome');
+    const modal = new ModalBuilder().setCustomId('modal_config_welcome').setTitle('✨ ตั้งค่าห้อง Welcome');
+    const channelInput = new TextInputBuilder().setCustomId('w_channel_id').setLabel('Welcome Channel ID (ไอดีห้องต้อนรับ)').setStyle(TextInputStyle.Short).setValue(configData.welcomeChannelId).setRequired(true);
     const titleInput = new TextInputBuilder().setCustomId('w_title').setLabel('หัวข้อ (Title)').setStyle(TextInputStyle.Short).setValue(configData.welcomeTitle).setRequired(true);
     const descInput = new TextInputBuilder().setCustomId('w_desc').setLabel('คำอธิบาย').setStyle(TextInputStyle.Paragraph).setValue(configData.welcomeDesc).setRequired(true);
-    const imageInput = new TextInputBuilder().setCustomId('w_image').setLabel('ลิงก์รูปภาพ Banner').setStyle(TextInputStyle.Short).setValue(configData.welcomeImage).setRequired(true);
-    const color1Input = new TextInputBuilder().setCustomId('w_c1').setLabel('สีหลัก Hex').setStyle(TextInputStyle.Short).setValue(configData.welcomeColor1).setRequired(true);
-    const color2Input = new TextInputBuilder().setCustomId('w_c2').setLabel('สีรอง Hex').setStyle(TextInputStyle.Short).setValue(configData.welcomeColor2).setRequired(true);
+    const imageInput = new TextInputBuilder().setCustomId('w_image').setLabel('ลิงก์รูปภาพ Banner (ถ้ามี)').setStyle(TextInputStyle.Short).setValue(configData.welcomeImage).setRequired(false);
 
     modal.addComponents(
+      new ActionRowBuilder().addComponents(channelInput),
       new ActionRowBuilder().addComponents(titleInput),
       new ActionRowBuilder().addComponents(descInput),
-      new ActionRowBuilder().addComponents(imageInput),
-      new ActionRowBuilder().addComponents(color1Input),
-      new ActionRowBuilder().addComponents(color2Input)
+      new ActionRowBuilder().addComponents(imageInput)
     );
     return interaction.showModal(modal);
   }
 
   if (interaction.isButton() && interaction.customId === 'edit_goodbye') {
-    const modal = new ModalBuilder().setCustomId('modal_config_goodbye').setTitle('👋 ตั้งค่าระบบ Goodbye');
+    const modal = new ModalBuilder().setCustomId('modal_config_goodbye').setTitle('👋 ตั้งค่าห้อง Goodbye');
+    const channelInput = new TextInputBuilder().setCustomId('g_channel_id').setLabel('Goodbye Channel ID (ไอดีห้องอำลา)').setStyle(TextInputStyle.Short).setValue(configData.goodbyeChannelId).setRequired(true);
     const titleInput = new TextInputBuilder().setCustomId('g_title').setLabel('หัวข้อ (Title)').setStyle(TextInputStyle.Short).setValue(configData.goodbyeTitle).setRequired(true);
     const descInput = new TextInputBuilder().setCustomId('g_desc').setLabel('คำอธิบาย').setStyle(TextInputStyle.Paragraph).setValue(configData.goodbyeDesc).setRequired(true);
-    const imageInput = new TextInputBuilder().setCustomId('g_image').setLabel('ลิงก์รูปภาพ Banner').setStyle(TextInputStyle.Short).setValue(configData.goodbyeImage).setRequired(true);
-    const color1Input = new TextInputBuilder().setCustomId('g_c1').setLabel('สีหลัก Hex').setStyle(TextInputStyle.Short).setValue(configData.goodbyeColor1).setRequired(true);
-    const color2Input = new TextInputBuilder().setCustomId('g_c2').setLabel('สีรอง Hex').setStyle(TextInputStyle.Short).setValue(configData.goodbyeColor2).setRequired(true);
+    const imageInput = new TextInputBuilder().setCustomId('g_image').setLabel('ลิงก์รูปภาพ Banner (ถ้ามี)').setStyle(TextInputStyle.Short).setValue(configData.goodbyeImage).setRequired(false);
 
     modal.addComponents(
+      new ActionRowBuilder().addComponents(channelInput),
       new ActionRowBuilder().addComponents(titleInput),
       new ActionRowBuilder().addComponents(descInput),
-      new ActionRowBuilder().addComponents(imageInput),
-      new ActionRowBuilder().addComponents(color1Input),
-      new ActionRowBuilder().addComponents(color2Input)
+      new ActionRowBuilder().addComponents(imageInput)
     );
     return interaction.showModal(modal);
   }
@@ -893,21 +894,19 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.isModalSubmit() && interaction.customId === 'modal_config_welcome') {
+    configData.welcomeChannelId = interaction.fields.getTextInputValue('w_channel_id').trim();
     configData.welcomeTitle = interaction.fields.getTextInputValue('w_title');
     configData.welcomeDesc = interaction.fields.getTextInputValue('w_desc');
     configData.welcomeImage = interaction.fields.getTextInputValue('w_image');
-    configData.welcomeColor1 = interaction.fields.getTextInputValue('w_c1');
-    configData.welcomeColor2 = interaction.fields.getTextInputValue('w_c2');
-    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Welcome สำเร็จเรียบร้อยค่ะ!**', ephemeral: true });
+    await interaction.reply({ content: `✅ **อัปเดตและบันทึกระบบ Welcome สำเร็จ!** (Channel ID: \`${configData.welcomeChannelId}\`)`, ephemeral: true });
   }
 
   if (interaction.isModalSubmit() && interaction.customId === 'modal_config_goodbye') {
+    configData.goodbyeChannelId = interaction.fields.getTextInputValue('g_channel_id').trim();
     configData.goodbyeTitle = interaction.fields.getTextInputValue('g_title');
     configData.goodbyeDesc = interaction.fields.getTextInputValue('g_desc');
     configData.goodbyeImage = interaction.fields.getTextInputValue('g_image');
-    configData.goodbyeColor1 = interaction.fields.getTextInputValue('g_c1');
-    configData.goodbyeColor2 = interaction.fields.getTextInputValue('g_c2');
-    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Goodbye สำเร็จเรียบร้อยค่ะ!**', ephemeral: true });
+    await interaction.reply({ content: `✅ **อัปเดตและบันทึกระบบ Goodbye สำเร็จ!** (Channel ID: \`${configData.goodbyeChannelId}\`)`, ephemeral: true });
   }
 
   // คำสั่ง Setup Verify (เพิ่มปุ่มกรอก Room ID ด้วยตนเอง)
@@ -958,7 +957,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `❌ ไม่พบห้องที่มี ID: \`${targetChannelId}\` กรุณาตรวจสอบความถูกต้องอีกครั้ง`, ephemeral: true });
     }
 
-    configData.welcomeChannelId = targetChannelId;
+    configData.welcomeChannelId = targetChannelId; // ปรับให้ส่งการ์ดไปห้องนี้
 
     const verifyEmbed1 = new EmbedBuilder().setTitle(configData.verifyTitle).setDescription(configData.verifyDesc).setColor(configData.verifyColor1);
     if (configData.verifyImage && configData.verifyImage.trim() !== '') verifyEmbed1.setImage(configData.verifyImage.trim());
