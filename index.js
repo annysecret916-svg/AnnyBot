@@ -22,7 +22,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// รองรับ Uptime Robot และเว็บตรวจสอบสถานะ
 app.get('/', (req, res) => {
   res.status(200).send('🤖 Bot Discord is running and alive 24/7!');
 });
@@ -63,7 +62,6 @@ app.get('/api/check-whitelist', async (req, res) => {
             return sheetDiscordId === String(discordId).trim();
         });
 
-        console.log(`[API Check] Discord ID: ${discordId} \vert{} Whitelist Status:${isFound}`);
         return res.json({ whitelisted: isFound });
     } catch (error) {
         console.error('[API Error] ไม่สามารถดึงข้อมูลจาก Google Sheet ได้:', error.message);
@@ -171,7 +169,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// 1. ระบบ Voice Join to Create (แยกอิสระ)
+// 1. ระบบ Voice Join to Create
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -187,7 +185,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const userVoiceChannel = await guild.channels.create({
         name: defaultRoomName,
         type: ChannelType.GuildVoice,
-        parent: parentCategory,
+        parent: parentCategory ? parentCategory.id : null,
         userLimit: 0,
         permissionOverwrites: [
           {
@@ -284,7 +282,7 @@ client.on('messageCreate', async message => {
         const timeoutMinutes = 5 * Math.pow(2, offenses - 1);
         const timeoutDuration = timeoutMinutes * 60 * 1000;
 
-        await message.member.timeout(timeoutDuration, `Anti-Spam: ส่งข้อความซ้ำกันเกินกำหนด (ทำผิดครั้งที่ ${offenses})`);
+        await message.member.timeout(timeoutDuration, `Anti-Spam: ส่งข้อความซ้ำกันเกินกำหนด`);
 
         const warningMsg = await message.channel.send(`⚠️ <@${userId}> **คุณถูก Timeout ${timeoutMinutes} นาที เนื่องจากสแปมข้อความซ้ำกันค่ะ!**`);
         setTimeout(() => warningMsg.delete().catch(() => {}), 7000);
@@ -429,7 +427,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // 2. ปุ่มกดสร้างห้อง HSHO -> สร้างห้องทันทีแบบ 1-Click (แก้ไขสิทธิ์ ManageChannel ให้ถูกต้อง)
+  // 2. ปุ่มกดสร้างห้อง HSHO -> สร้างห้องทันทีแบบ 1-Click
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
 
