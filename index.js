@@ -163,28 +163,26 @@ client.once('ready', async () => {
   ];
 
   if (!BOT_TOKEN || !GUILD_ID) {
-    console.error('❌ กรุณาตั้งค่า BOT_TOKEN และ GUILD_ID ใน Environment Variables');
+    console.error('❌ กรุณาตั้งค่า BOT_TOKEN และ GUILD_ID ใน Environment Variables ของ Render');
     return;
   }
 
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
 
   try {
-    // อัปเดตการลงทะเบียน Slash Commands แบบ Specific Guild เพื่อให้แสดงผลทันที
+    // ใช้วิธีลงทะเบียนแบบ Guild Commands เพื่อป้องกันคำสั่งซ้ำซ้อนและแสดงผลทันที
     await rest.put(
       Routes.applicationGuildCommands(client.user.id, GUILD_ID),
       { body: commands },
     );
-
-    console.log('✅ ลงทะเบียน Slash Commands ในเซิร์ฟเวอร์สำเร็จ!');
-    console.log('📋 คำสั่งที่ลงทะเบียน:', commands.map(c => `/${c.name}`).join(', '));
+    console.log('🎉 ลงทะเบียน Slash Commands ในเซิร์ฟเวอร์สำเร็จเรียบร้อย!');
   } catch (error) {
-    console.error('❌ ลงทะเบียน Slash Commands ไม่สำเร็จ:', error);
+    console.error('❌ เกิดข้อผิดพลาดในการลงทะเบียนคำสั่ง:', error);
   }
 });
 
 // ==========================================
-// 1. ระบบ Voice Join (เตะออกแล้วส่งปุ่มให้กดเปิด Modal ตั้งชื่อและ Limit)
+// 1. ระบบ Voice Join to Create (เตะออกแล้วส่งปุ่มให้กดเปิด Modal ตั้งชื่อและ Limit)
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
