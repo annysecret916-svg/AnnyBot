@@ -195,16 +195,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           {
             id: member.id,
             allow: [
-              PermissionFlagsBits.ManageChannel, 
-              PermissionFlagsBits.MoveMembers,
-              PermissionFlagsBits.MuteMembers,
-              PermissionFlagsBits.DeafenMembers
+              PermissionFlagsBits.ManageChannels, 
+              PermissionFlagsBits.MoveMembers
             ],
           },
           {
             id: client.user.id,
             allow: [
-              PermissionFlagsBits.ManageChannel,
+              PermissionFlagsBits.ManageChannels,
               PermissionFlagsBits.Connect,
               PermissionFlagsBits.Speak,
               PermissionFlagsBits.MoveMembers,
@@ -451,16 +449,14 @@ client.on('interactionCreate', async interaction => {
           {
             id: member.id,
             allow: [
-              PermissionFlagsBits.ManageChannel, 
-              PermissionFlagsBits.MoveMembers,
-              PermissionFlagsBits.MuteMembers,
-              PermissionFlagsBits.DeafenMembers
+              PermissionFlagsBits.ManageChannels, 
+              PermissionFlagsBits.MoveMembers
             ],
           },
           {
             id: client.user.id,
             allow: [
-              PermissionFlagsBits.ManageChannel,
+              PermissionFlagsBits.ManageChannels,
               PermissionFlagsBits.Connect,
               PermissionFlagsBits.Speak,
               PermissionFlagsBits.MoveMembers,
