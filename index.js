@@ -139,7 +139,7 @@ client.once('ready', async () => {
     },
     {
       name: 'setup-server',
-      description: '🏗️ สร้างหมวดหมู่และช่อง Text Channels (ชื่อไทยสั้นกระชับ ไม่ซ้ำกัน)',
+      description: '🏗️ สร้างหมวดหมู่และช่อง Text Channels ทั้งหมด (ชื่อไทยสั้นกระชับ ไม่ซ้ำกัน)',
       default_member_permissions: PermissionFlagsBits.Administrator.toString(),
     },
     {
@@ -186,7 +186,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       // เอาผู้ใช้ออกจากห้อง JTC ทันทีเพื่อไม่ให้ค้างอยู่ในห้องต้นแบบ
       await member.voice.setChannel(null).catch(() => {});
 
-      // ส่งปุ่มให้ผู้ใช้กดเพื่อเปิด Modal ตั้งชื่อและ Limit ส่วนตัว
+      // ส่งปุ่มให้ผู้ใช้กดเพื่อเปิด Modal ตั้งชื่อและ Limit ส่วนตัวทาง DM
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`open_jtc_modal_${newState.guild.id}`)
