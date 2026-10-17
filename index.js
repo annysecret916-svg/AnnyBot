@@ -99,19 +99,24 @@ let configData = {
   goodbyeDesc: 'คุณ **{username}** ได้ออกจาก {server} ไปแล้ว...\nขอให้โชคดี แล้วพบกันใหม่ครับ!\n📉 สมาชิกคงเหลือ: **{memberCount}** คน',
   goodbyeImage: 'https://cdn.discordapp.com/attachments/1560286143956648031/1560299610185015328/2026-10-15_213204.png',
   goodbyeColor1: '#FF3366',
-  goodbyeColor2: '#FF9900'
+  goodbyeColor2: '#FF9900',
+
+  // ค่าสำหรับระบบ Join to Create (สามารถเปลี่ยน ID ห้องต้นแบบได้ตามต้องการ)
+  joinToCreateChannelId: '' 
 };
 
 const userMessageHistory = new Map(); 
 const userVerifyHistory = new Map(); 
 const spamOffenseCount = new Map();  
+const activeTemporaryChannels = new Map(); // เก็บข้อมูลห้อง Voice ชั่วคราวของผู้เล่น
 
 const client = new Client({ 
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates
   ] 
 });
 
@@ -127,6 +132,11 @@ client.once('ready', async () => {
     {
       name: 'setup-embed',
       description: 'สร้างข้อความ Embed ประกาศทั่วไปส่งไปยังห้องที่ต้องการ',
+      default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+    },
+    {
+      name: 'setup-roomcreator',
+      description: '✨ สร้างปุ่มเมนูสร้างห้องสุดน่ารักสำหรับ HSHO Server และระบบอื่นๆ',
       default_member_permissions: PermissionFlagsBits.Administrator.toString(),
     },
     {
@@ -161,6 +171,65 @@ client.once('ready', async () => {
   }
 });
 
+// ==========================================
+// ระบบ Voice Join to Create (สร้างห้องคุยอัตโนมัติ)
+// ==========================================
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  const member = newState.member;
+  if (!member || member.user.bot) return;
+
+  // ตรวจสอบว่าผู้เล่นเข้ามาในห้อง Join to Create หรือไม่
+  if (configData.joinToCreateChannelId && newState.channelId === configData.joinToCreateChannelId) {
+    // ส่ง Modal หรือให้บอทเปิด Prompt ตั้งชื่อห้องโดยใช้ระบบ Interaction หรือเปิดใช้งานผ่าน Modal 
+    // (ใน Discord บนมือถือและคอมพิวเตอร์ การเด้ง Modal จาก Event Voice ตรงๆ อาจติดข้อจำกัดของ Discord API จึงใช้ระบบสร้างห้องให้อัตโนมัติในชื่อผู้ใช้ แล้วให้ย้าย/เปลี่ยนชื่อ หรือส่งข้อความส่วนตัวไปให้ตั้งชื่อแทนครับ)
+    try {
+      const guild = newState.guild;
+      const parentCategory = newState.channel.parent;
+
+      const userVoiceChannel = await guild.channels.create({
+        name: `🎀・${member.user.username} 🛋️`,
+        type: ChannelType.GuildVoice,
+        parent: parentCategory,
+        userLimit: 10,
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+          },
+          {
+            id: member.id,
+            allow: [PermissionFlagsBits.ManageChannel, PermissionFlagsBits.MoveMembers],
+          },
+        ],
+      });
+
+      // ย้ายสมาชิกเข้าไปห้องใหม่ทันที
+      await member.voice.setChannel(userVoiceChannel);
+      activeTemporaryChannels.set(userVoiceChannel.id, member.id);
+
+      // ส่งข้อความแจ้งเตือนส่วนตัววิธีเปลี่ยนชื่อห้อง
+      await member.send(`✨ **สร้างห้องส่วนตัวสำเร็จแล้วค่ะ!**\nคุณสามารถกดคลิกขวาที่ห้อง Voice ของคุณแล้วเลือก **"Edit Channel" (แก้ไขห้อง)** เพื่อเปลี่ยนชื่อและตั้งค่าตามใจชอบได้เลยนะคะ 🌸`).catch(() => {});
+    } catch (err) {
+      console.error('❌ ไม่สามารถสร้างห้อง Voice ชั่วคราวได้:', err);
+    }
+  }
+
+  // ตรวจสอบกรณีห้องว่างเปล่า ให้ลบห้องทิ้งอัตโนมัติ
+  if (oldState.channel && activeTemporaryChannels.has(oldState.channelId)) {
+    if (oldState.channel.members.size === 0) {
+      try {
+        await oldState.channel.delete();
+        activeTemporaryChannels.delete(oldState.channelId);
+      } catch (err) {
+        console.error('❌ ไม่สามารถลบห้อง Voice ที่ว่างเปล่าได้:', err);
+      }
+    }
+  }
+});
+
+// ==========================================
+// ระบบ Anti-Spam ข้อความ
+// ==========================================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   if (message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
@@ -193,7 +262,7 @@ client.on('messageCreate', async message => {
 
         await message.member.timeout(timeoutDuration, `Anti-Spam: ส่งข้อความซ้ำกันเกินกำหนด (ทำผิดครั้งที่ ${offenses})`);
 
-        const warningMsg = await message.channel.send(`⚠️ <@${userId}> **คุณถูก Timeout ${timeoutMinutes} นาที เนื่องจากสแปมข้อความซ้ำกันครับ!**`);
+        const warningMsg = await message.channel.send(`⚠️ <@${userId}> **คุณถูก Timeout ${timeoutMinutes} นาที เนื่องจากสแปมข้อความซ้ำกันค่ะ!**`);
         setTimeout(() => warningMsg.delete().catch(() => {}), 7000);
 
         userMessageHistory.delete(userId);
@@ -207,6 +276,9 @@ client.on('messageCreate', async message => {
   }
 });
 
+// ==========================================
+// ระบบ Welcome & Goodbye
+// ==========================================
 client.on('guildMemberAdd', async member => {
   const channel = member.guild.channels.cache.get(configData.welcomeChannelId);
   if (!channel) return;
@@ -236,7 +308,7 @@ client.on('guildMemberAdd', async member => {
     .setDescription(`✨ Welcome to ${member.guild.name} User ID:${member.id}`)
     .setColor(configData.welcomeColor2 || '#3399FF');
 
-  await channel.send({ content: `✨ ยินดีต้อนรับสมาชิกใหม่ <@${member.id}> ครับ!`, embeds: [primaryEmbed, secondaryEmbed] });
+  await channel.send({ content: `✨ ยินดีต้อนรับสมาชิกใหม่ <@${member.id}> เข้าสู่บ้านหลังนี้ด้วยนะคะ! 🌸`, embeds: [primaryEmbed, secondaryEmbed] });
 });
 
 client.on('guildMemberRemove', async member => {
@@ -271,6 +343,9 @@ client.on('guildMemberRemove', async member => {
   await channel.send({ embeds: [primaryEmbed, secondaryEmbed] });
 });
 
+// ==========================================
+// ระบบ Interaction และปุ่มกดต่างๆ
+// ==========================================
 client.on('interactionCreate', async interaction => {
   if (interaction.isButton() || interaction.isModalSubmit()) {
     if (interaction.member && interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -292,11 +367,11 @@ client.on('interactionCreate', async interaction => {
             const timeoutMinutes = 5 * Math.pow(2, offenses - 1);
             const timeoutDuration = timeoutMinutes * 60 * 1000;
 
-            await interaction.member.timeout(timeoutDuration, `Anti-Spam: สแปมกดปุ่ม Verify รัวๆ`);
+            await interaction.member.timeout(timeoutDuration, `Anti-Spam: สแปมกดปุ่มรัวๆ`);
             userVerifyHistory.delete(userId);
             userVerifyHistory.delete(userId + '_spam');
 
-            return interaction.reply({ content: `⚠️ **คุณถูก Timeout ${timeoutMinutes} นาที เนื่องจากการสแปมคลิกปุ่มรัวๆ ครับ!**`, ephemeral: true });
+            return interaction.reply({ content: `⚠️ **คุณถูก Timeout ${timeoutMinutes} นาที เนื่องจากการสแปมคลิกปุ่มรัวๆ ค่ะ!**`, ephemeral: true });
           } catch (err) {
             console.error('❌ ไม่สามารถ Timeout คนสแปมปุ่มได้:', err);
           }
@@ -308,6 +383,100 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // คำสั่งติดตั้งแผงสร้างห้อง (Room Creator Panel)
+  if (interaction.isChatInputCommand() && interaction.commandName === 'setup-roomcreator') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎮 ──・[ HSHO : Room Creator Center ]・── 🧸')
+      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อสร้างห้องเล่นเกมส่วนตัวได้ทันที\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
+      .setColor('#ff6b81')
+      .setImage('https://cdn.discordapp.com/attachments/1560286143956648031/1560305181277692064/image.png')
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('create_hsho_room').setLabel('🔪 สร้างห้อง Home Sweet Home Online').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('soon_game_2').setLabel('🎮 Valorant (Soon..)').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId('soon_game_3').setLabel('👻 Dead by Daylight (Soon..)').setStyle(ButtonStyle.Secondary).setDisabled(true)
+    );
+
+    await interaction.channel.send({ embeds: [embed], components: [row] });
+    return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
+  }
+
+  // ปุ่มกดสร้างห้อง Home Sweet Home Online
+  if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
+    const modal = new ModalBuilder()
+      .setCustomId('modal_create_hsho_room')
+      .setTitle('🔪 ตั้งค่าห้อง Home Sweet Home Online');
+
+    const roomNameInput = new TextInputBuilder()
+      .setCustomId('hsho_room_name')
+      .setLabel('ชื่อห้องเกมที่คุณต้องการ (เช่น ทีมตบผีสุดโหด)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('พิมพ์ชื่อห้องที่นี่เลยค่ะ...')
+      .setRequired(true);
+
+    const roomLimitInput = new TextInputBuilder()
+      .setCustomId('hsho_room_limit')
+      .setLabel('จำนวนผู้เล่นสูงสุด (เช่น 5 คน)')
+      .setStyle(TextInputStyle.Short)
+      .setValue('5')
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(roomNameInput),
+      new ActionRowBuilder().addComponents(roomLimitInput)
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  // Modal Submit สร้างห้องเกม HSHO
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_create_hsho_room') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const roomName = interaction.fields.getTextInputValue('hsho_room_name');
+    const roomLimit = parseInt(interaction.fields.getTextInputValue('hsho_room_limit')) || 5;
+
+    try {
+      const guild = interaction.guild;
+      const member = interaction.member;
+
+      // สร้างห้อง Voice สำหรับเกม HSHO โดยเฉพาะ
+      const hshoChannel = await guild.channels.create({
+        name: `🔪・${roomName} 🩸`,
+        type: ChannelType.GuildVoice,
+        userLimit: roomLimit > 99 ? 99 : roomLimit,
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+          },
+          {
+            id: member.id,
+            allow: [PermissionFlagsBits.ManageChannel, PermissionFlagsBits.MoveMembers],
+          },
+        ],
+      });
+
+      activeTemporaryChannels.set(hshoChannel.id, member.id);
+
+      const successEmbed = new EmbedBuilder()
+        .setTitle('🎉 สร้างห้องเกมสำเร็จแล้วค่ะ!')
+        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 ชื่อห้อง: **${roomName}**\n👥 จำกัดผู้เล่น: **${roomLimit} คน**\n\n*ขอให้สนุกกับการล่าผีและเอาชีวิตรอดนะคะ!*`)
+        .setColor('#2ecc71');
+
+      return interaction.editReply({ embeds: [successEmbed] });
+    } catch (err) {
+      console.error('❌ ไม่สามารถสร้างห้อง HSHO ได้:', err);
+      return interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ กรุณาลองใหม่อีกครั้งนะคะ' });
+    }
+  }
+
+  // คำสั่งค้นหา Whitelist
   if (interaction.isChatInputCommand() && interaction.commandName === 'check-whitelist') {
     await interaction.deferReply({ ephemeral: true });
 
@@ -343,18 +512,19 @@ client.on('interactionCreate', async interaction => {
       }
     } catch (error) {
       console.error('❌ เกิดข้อผิดพลาดในการค้นหา:', error);
-      await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล Google Sheets' });
+      await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล Google Sheets ค่ะ' });
     }
   }
 
+  // คำสั่งตั้งค่า Embed ประกาศ
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-embed') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้!', ephemeral: true });
+      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
     }
 
     const embed = new EmbedBuilder()
       .setTitle('📢 สร้างข้อความ Embed ประกาศ')
-      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการส่งข้อความ Embed ประกาศไปแสดงครับ')
+      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการส่งข้อความ Embed ประกาศไปแสดงค่ะ')
       .setColor('#e74c3c');
 
     const channelSelect = new ChannelSelectMenuBuilder()
@@ -394,7 +564,7 @@ client.on('interactionCreate', async interaction => {
     const targetChannel = interaction.guild.channels.cache.get(targetChannelId);
 
     if (!targetChannel) {
-      return interaction.reply({ content: '❌ ไม่พบห้องที่คุณเลือก', ephemeral: true });
+      return interaction.reply({ content: '❌ ไม่พบห้องที่คุณเลือกค่ะ', ephemeral: true });
     }
 
     const title = interaction.fields.getTextInputValue('e_title');
@@ -413,29 +583,32 @@ client.on('interactionCreate', async interaction => {
     }
 
     await targetChannel.send({ embeds: [customEmbed] });
-    return interaction.reply({ content: `✅ **ส่งข้อความ Embed ไปที่ห้อง ${targetChannel} เรียบร้อยแล้วครับ!**`, ephemeral: true });
+    return interaction.reply({ content: `✅ **ส่งข้อความ Embed ไปที่ห้อง ${targetChannel} เรียบร้อยแล้วค่ะ!**`, ephemeral: true });
   }
 
+  // คำสั่งแผงควบคุม Config Panel
   if (interaction.isChatInputCommand() && interaction.commandName === 'config-panel') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้!', ephemeral: true });
+      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
     }
 
     const roleStatus = configData.verifiedRoleId ? `<@&${configData.verifiedRoleId}>` : '❌ ยังไม่ได้ตั้งค่า';
+    const joinCreateStatus = configData.joinToCreateChannelId ? `<#${configData.joinToCreateChannelId}>` : '❌ ยังไม่ได้ตั้งค่า';
 
     const panelEmbed = new EmbedBuilder()
       .setTitle('👑 Admin Management Suite & Customization')
-      .setDescription('เลือกปุ่มด้านล่างเพื่อปรับแต่งการตั้งค่าระบบต่างๆ ได้สดๆ ทันที!')
+      .setDescription('เลือกปุ่มด้านล่างเพื่อปรับแต่งการตั้งค่าระบบต่างๆ ได้สดๆ ทันทีค่ะ!')
       .setColor('#9b59b6')
       .addFields(
         { name: '🎖️ ยศหลัง Verify สำเร็จ', value: roleStatus, inline: false },
+        { name: '🛋️ ห้อง Join to Create (Voice)', value: joinCreateStatus, inline: false },
         { name: '🔒 ระบบ Verify ปัจจุบัน', value: `หัวข้อ: ${configData.verifyTitle}`, inline: false },
-        { name: '✨ ระบบ Welcome ปัจจุบัน', value: `ห้อง: <#${configData.welcomeChannelId}>\nหัวข้อ: ${configData.welcomeTitle}`, inline: false },
-        { name: '👋 ระบบ Goodbye ปัจจุบัน', value: `ห้อง: <#${configData.goodbyeChannelId}>\nหัวข้อ: ${configData.goodbyeTitle}`, inline: false }
+        { name: '✨ ระบบ Welcome ปัจจุบัน', value: `ห้อง: <#${configData.welcomeChannelId}>\nหัวข้อ: ${configData.welcomeTitle}`, inline: false }
       );
 
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('edit_role').setLabel('🎖️ ตั้งค่ายศอัตโนมัติ').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('edit_jointocreate').setLabel('🛋️ ตั้งค่า Join to Create').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('edit_verify').setLabel('⚙️ ตั้งค่า Verify Card').setStyle(ButtonStyle.Primary),
     );
 
@@ -451,6 +624,13 @@ client.on('interactionCreate', async interaction => {
     const modal = new ModalBuilder().setCustomId('modal_config_role').setTitle('🎖️ ตั้งค่ายศอัตโนมัติ');
     const roleInput = new TextInputBuilder().setCustomId('role_id_input').setLabel('Role ID (ไอดีของยศ)').setStyle(TextInputStyle.Short).setValue(configData.verifiedRoleId).setRequired(true);
     modal.addComponents(new ActionRowBuilder().addComponents(roleInput));
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isButton() && interaction.customId === 'edit_jointocreate') {
+    const modal = new ModalBuilder().setCustomId('modal_config_jtc').setTitle('🛋️ ตั้งค่าห้อง Join to Create');
+    const jtcInput = new TextInputBuilder().setCustomId('jtc_id_input').setLabel('Voice Channel ID (ไอดีห้องต้นแบบ)').setStyle(TextInputStyle.Short).setValue(configData.joinToCreateChannelId).setRequired(true);
+    modal.addComponents(new ActionRowBuilder().addComponents(jtcInput));
     return interaction.showModal(modal);
   }
 
@@ -513,13 +693,18 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ content: `✅ **บันทึกตั้งค่ายศอัตโนมัติสำเร็จ!** (Role ID: \`${configData.verifiedRoleId}\`)`, ephemeral: true });
   }
 
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_config_jtc') {
+    configData.joinToCreateChannelId = interaction.fields.getTextInputValue('jtc_id_input').trim();
+    await interaction.reply({ content: `✅ **บันทึกห้อง Join to Create สำเร็จค่ะ!** (Channel ID: \`${configData.joinToCreateChannelId}\`)`, ephemeral: true });
+  }
+
   if (interaction.isModalSubmit() && interaction.customId === 'modal_config_verify') {
     configData.verifyTitle = interaction.fields.getTextInputValue('v_title');
     configData.verifyDesc = interaction.fields.getTextInputValue('v_desc');
     configData.verifyImage = interaction.fields.getTextInputValue('v_image');
     configData.verifyColor1 = interaction.fields.getTextInputValue('v_c1');
     configData.verifyColor2 = interaction.fields.getTextInputValue('v_c2');
-    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าการ์ด Verify สำเร็จ!**', ephemeral: true });
+    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าการ์ด Verify สำเร็จค่ะ!**', ephemeral: true });
   }
 
   if (interaction.isModalSubmit() && interaction.customId === 'modal_config_welcome') {
@@ -528,7 +713,7 @@ client.on('interactionCreate', async interaction => {
     configData.welcomeImage = interaction.fields.getTextInputValue('w_image');
     configData.welcomeColor1 = interaction.fields.getTextInputValue('w_c1');
     configData.welcomeColor2 = interaction.fields.getTextInputValue('w_c2');
-    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Welcome สำเร็จเรียบร้อย!**', ephemeral: true });
+    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Welcome สำเร็จเรียบร้อยค่ะ!**', ephemeral: true });
   }
 
   if (interaction.isModalSubmit() && interaction.customId === 'modal_config_goodbye') {
@@ -537,17 +722,18 @@ client.on('interactionCreate', async interaction => {
     configData.goodbyeImage = interaction.fields.getTextInputValue('g_image');
     configData.goodbyeColor1 = interaction.fields.getTextInputValue('g_c1');
     configData.goodbyeColor2 = interaction.fields.getTextInputValue('g_c2');
-    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Goodbye สำเร็จเรียบร้อย!**', ephemeral: true });
+    await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Goodbye สำเร็จเรียบร้อยค่ะ!**', ephemeral: true });
   }
 
+  // คำสั่ง Setup Verify
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-verify') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้!', ephemeral: true });
+      return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
     }
 
     const embed = new EmbedBuilder()
       .setTitle('⚙️ ตั้งค่าระบบ Whitelist Verification')
-      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการให้บอทส่งปุ่มลงทะเบียน Whitelist ไปแสดงครับ')
+      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการให้บอทส่งปุ่มลงทะเบียน Whitelist ไปแสดงค่ะ')
       .setColor('#3498db');
 
     const channelSelect = new ChannelSelectMenuBuilder()
@@ -564,7 +750,7 @@ client.on('interactionCreate', async interaction => {
     const targetChannel = interaction.guild.channels.cache.get(selectedChannelId);
 
     if (!targetChannel) {
-      return interaction.update({ content: '❌ ไม่พบห้องที่คุณเลือก', components: [] });
+      return interaction.update({ content: '❌ ไม่พบห้องที่คุณเลือกค่ะ', components: [] });
     }
 
     configData.welcomeChannelId = selectedChannelId; 
@@ -581,7 +767,7 @@ client.on('interactionCreate', async interaction => {
     );
 
     await targetChannel.send({ embeds: [verifyEmbed1, verifyEmbed2], components: [row] });
-    await interaction.update({ content: `✅ **ส่งปุ่มลงทะเบียน Whitelist ไปที่ห้อง ${targetChannel} เรียบร้อยแล้วครับ!**`, components: [] });
+    await interaction.update({ content: `✅ **ส่งปุ่มลงทะเบียน Whitelist ไปที่ห้อง ${targetChannel} เรียบร้อยแล้วค่ะ!**`, components: [] });
   }
 
   if (interaction.isButton() && interaction.customId === 'how_to_guide') {
@@ -634,10 +820,10 @@ client.on('interactionCreate', async interaction => {
           console.error('❌ ไม่สามารถเพิ่มยศให้ผู้เล่นได้:', roleError);
         }
 
-        const msg = isThai ? '🎉 **ลงทะเบียน Whitelist สำเร็จ!** บันทึกข้อมูลและรับยศเรียบร้อยแล้วครับ' : '🎉 **Registration successful!** Data saved and role assigned.';
+        const msg = isThai ? '🎉 **ลงทะเบียน Whitelist สำเร็จ!** บันทึกข้อมูลและรับยศเรียบร้อยแล้วค่ะ' : '🎉 **Registration successful!** Data saved and role assigned.';
         await interaction.editReply({ content: msg });
       } else if (response.data.status === 'already_exists') {
-        const msg = isThai ? '⚠️ **คุณได้ลงทะเบียนไปแล้ว!** ข้อมูลนี้มีในระบบแล้ว' : '⚠️ **Already registered!** Data already exists.';
+        const msg = isThai ? '⚠️ **คุณได้ลงทะเบียนไปแล้วค่ะ!** ข้อมูลนี้มีในระบบแล้ว' : '⚠️ **Already registered!** Data already exists.';
         await interaction.editReply({ content: msg });
       } else {
         await interaction.editReply({ content: isThai ? '❌ เกิดข้อผิดพลาดจากระบบ' : '❌ System error.' });
