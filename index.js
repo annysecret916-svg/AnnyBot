@@ -170,7 +170,6 @@ client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
 
   try {
-    // ใช้วิธีลงทะเบียนแบบ Guild Commands เพื่อป้องกันคำสั่งซ้ำซ้อนและแสดงผลทันที
     await rest.put(
       Routes.applicationGuildCommands(client.user.id, GUILD_ID),
       { body: commands },
@@ -182,7 +181,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// 1. ระบบ Voice Join to Create (เตะออกแล้วส่งปุ่มให้กดเปิด Modal ตั้งชื่อและ Limit)
+// 1. ระบบ Voice Join to Create
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -379,7 +378,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // 1. กดปุ่มจาก DM เพื่อเปิด Modal ตั้งชื่อห้องและ Limit (สำหรับ JTC)
+  // JTC Modal Open
   if (interaction.isButton() && interaction.customId.startsWith('open_jtc_modal_')) {
     const modal = new ModalBuilder()
       .setCustomId('modal_create_jtc_room')
@@ -407,7 +406,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.showModal(modal);
   }
 
-  // 2. รับค่าชื่อห้องและ Limit จาก Modal แล้วสร้างห้อง Voice ทันที
+  // JTC Modal Submit
   if (interaction.isModalSubmit() && interaction.customId === 'modal_create_jtc_room') {
     await interaction.deferReply({ ephemeral: true });
 
@@ -470,7 +469,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // คำสั่งสร้างโครงสร้างห้องทั้งหมดในเซิร์ฟเวอร์ (/setup-server)
+  // คำสั่งสร้างโครงสร้างห้องทั้งหมด (/setup-server)
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-server') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
@@ -533,7 +532,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // คำสั่งติดตั้งแผงสร้างห้อง (Room Creator Panel)
+  // คำสั่งติดตั้งแผงสร้างห้อง (/setup-roomcreator)
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-roomcreator') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
@@ -555,7 +554,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // ปุ่มกดสร้างห้อง HSHO -> สร้างห้องทันทีแบบ 1-Click
+  // ปุ่มกดสร้างห้อง HSHO
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
 
@@ -616,7 +615,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // คำสั่งค้นหา Whitelist
+  // ตรวจสอบ Whitelist
   if (interaction.isChatInputCommand() && interaction.commandName === 'check-whitelist') {
     await interaction.deferReply({ ephemeral: true });
 
@@ -656,7 +655,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // คำสั่งตั้งค่า Embed ประกาศ
+  // คำสั่ง Setup Embed
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-embed') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
@@ -664,7 +663,7 @@ client.on('interactionCreate', async interaction => {
 
     const embed = new EmbedBuilder()
       .setTitle('📢 สร้างข้อความ Embed ประกาศ')
-      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการส่งข้อความ Embed ประกาศไปแสดงค่ะ')
+      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการส่งข้อความ Embed ประกาศไปแสดงค่ะ หรือคลิกปุ่มด้านล่างเพื่อกรอก Room ID โดยตรง')
       .setColor('#e74c3c');
 
     const channelSelect = new ChannelSelectMenuBuilder()
@@ -672,9 +671,55 @@ client.on('interactionCreate', async interaction => {
       .setPlaceholder('คลิกเพื่อเลือกห้องสำหรับส่ง Embed...')
       .addChannelTypes(ChannelType.GuildText);
 
-    const row = new ActionRowBuilder().addComponents(channelSelect);
+    const row1 = new ActionRowBuilder().addComponents(channelSelect);
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('manual_input_embed_channel').setLabel('✏️ กรอก Room ID ด้วยตนเอง').setStyle(ButtonStyle.Secondary)
+    );
 
-    return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    return interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+  }
+
+  if (interaction.isButton() && interaction.customId === 'manual_input_embed_channel') {
+    const modal = new ModalBuilder()
+      .setCustomId('modal_manual_embed_channel')
+      .setTitle('✏️ กรอก Room ID สำหรับส่ง Embed');
+
+    const channelIdInput = new TextInputBuilder()
+      .setCustomId('target_channel_id')
+      .setLabel('Channel ID (ไอดีห้องข้อความ)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('เช่น 1560286143956648031')
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(channelIdInput));
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_manual_embed_channel') {
+    const targetChannelId = interaction.fields.getTextInputValue('target_channel_id').trim();
+    const targetChannel = interaction.guild.channels.cache.get(targetChannelId);
+
+    if (!targetChannel) {
+      return interaction.reply({ content: `❌ ไม่พบห้องที่มี ID: \`${targetChannelId}\` กรุณาตรวจสอบความถูกต้องอีกครั้ง`, ephemeral: true });
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_custom_embed_${targetChannelId}`)
+      .setTitle('📝 กรอกรายละเอียด Embed');
+
+    const titleInput = new TextInputBuilder().setCustomId('e_title').setLabel('หัวข้อ (Title)').setStyle(TextInputStyle.Short).setRequired(true);
+    const descInput = new TextInputBuilder().setCustomId('e_desc').setLabel('เนื้อหาคำอธิบาย').setStyle(TextInputStyle.Paragraph).setRequired(true);
+    const imageInput = new TextInputBuilder().setCustomId('e_image').setLabel('ลิงก์รูปภาพ Banner (ถ้ามี)').setStyle(TextInputStyle.Short).setRequired(false);
+    const colorInput = new TextInputBuilder().setCustomId('e_color').setLabel('โค้ดสี Hex').setStyle(TextInputStyle.Short).setValue('#3498db').setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(titleInput),
+      new ActionRowBuilder().addComponents(descInput),
+      new ActionRowBuilder().addComponents(imageInput),
+      new ActionRowBuilder().addComponents(colorInput)
+    );
+
+    return interaction.showModal(modal);
   }
 
   if (interaction.isChannelSelectMenu() && interaction.customId === 'select_embed_channel') {
@@ -726,7 +771,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: `✅ **ส่งข้อความ Embed ไปที่ห้อง ${targetChannel} เรียบร้อยแล้วค่ะ!**`, ephemeral: true });
   }
 
-  // คำสั่งแผงควบคุม Config Panel
+  // Config Panel
   if (interaction.isChatInputCommand() && interaction.commandName === 'config-panel') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
@@ -865,7 +910,7 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ content: '✅ **อัปเดตและบันทึกการตั้งค่าระบบ Goodbye สำเร็จเรียบร้อยค่ะ!**', ephemeral: true });
   }
 
-  // คำสั่ง Setup Verify
+  // คำสั่ง Setup Verify (เพิ่มปุ่มกรอก Room ID ด้วยตนเอง)
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup-verify') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้นะคะ!', ephemeral: true });
@@ -873,7 +918,7 @@ client.on('interactionCreate', async interaction => {
 
     const embed = new EmbedBuilder()
       .setTitle('⚙️ ตั้งค่าระบบ Whitelist Verification')
-      .setDescription('กรุณาเลือก **ห้อง (Channel)** ที่ต้องการให้บอทส่งปุ่มลงทะเบียน Whitelist ไปแสดงค่ะ')
+      .setDescription('กรุณาเลือก **ห้อง (Channel)** จากเมนูด้านล่าง หรือคลิกปุ่ม **"กรอก Room ID ด้วยตนเอง"** หากหาห้องไม่เจอค่ะ')
       .setColor('#3498db');
 
     const channelSelect = new ChannelSelectMenuBuilder()
@@ -881,8 +926,53 @@ client.on('interactionCreate', async interaction => {
       .setPlaceholder('คลิกเพื่อเลือกห้องสำหรับตั้งค่า Verify...')
       .addChannelTypes(ChannelType.GuildText);
 
-    const row = new ActionRowBuilder().addComponents(channelSelect);
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    const row1 = new ActionRowBuilder().addComponents(channelSelect);
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('manual_input_verify_channel').setLabel('✏️ กรอก Room ID ด้วยตนเอง').setStyle(ButtonStyle.Secondary)
+    );
+
+    await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+  }
+
+  if (interaction.isButton() && interaction.customId === 'manual_input_verify_channel') {
+    const modal = new ModalBuilder()
+      .setCustomId('modal_manual_verify_channel')
+      .setTitle('✏️ กรอก Room ID สำหรับ Verify');
+
+    const channelIdInput = new TextInputBuilder()
+      .setCustomId('target_verify_channel_id')
+      .setLabel('Channel ID (ไอดีห้อง Verify)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('เช่น 1560286143956648031')
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(channelIdInput));
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_manual_verify_channel') {
+    const targetChannelId = interaction.fields.getTextInputValue('target_verify_channel_id').trim();
+    const targetChannel = interaction.guild.channels.cache.get(targetChannelId);
+
+    if (!targetChannel) {
+      return interaction.reply({ content: `❌ ไม่พบห้องที่มี ID: \`${targetChannelId}\` กรุณาตรวจสอบความถูกต้องอีกครั้ง`, ephemeral: true });
+    }
+
+    configData.welcomeChannelId = targetChannelId;
+
+    const verifyEmbed1 = new EmbedBuilder().setTitle(configData.verifyTitle).setDescription(configData.verifyDesc).setColor(configData.verifyColor1);
+    if (configData.verifyImage && configData.verifyImage.trim() !== '') verifyEmbed1.setImage(configData.verifyImage.trim());
+
+    const verifyEmbed2 = new EmbedBuilder().setDescription('✨ Secure Whitelist Verification System').setColor(configData.verifyColor2);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('verify_th').setLabel('🇹🇭 ภาษาไทย').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('verify_en').setLabel('🇬🇧 English').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('how_to_guide').setLabel('📖 คู่มือการหาข้อมูล (Guide)').setStyle(ButtonStyle.Secondary)
+    );
+
+    await targetChannel.send({ embeds: [verifyEmbed1, verifyEmbed2], components: [row] });
+    return interaction.reply({ content: `✅ **ส่งปุ่มลงทะเบียน Whitelist ไปที่ห้อง ${targetChannel} เรียบร้อยแล้วค่ะ!**`, ephemeral: true });
   }
 
   if (interaction.isChannelSelectMenu() && interaction.customId === 'select_verify_channel') {
