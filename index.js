@@ -171,7 +171,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// ระบบ Voice Join to Create (สร้างห้องคุยอัตโนมัติ - ไม่จำกัดคน)
+// ระบบ Voice Join to Create (แยกอิสระ: จอยห้องปุ๊บ สร้างห้องสไตล์ Ref + ส่ง DM ให้ตั้งชื่อ)
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -182,27 +182,58 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const guild = newState.guild;
       const parentCategory = newState.channel.parent;
 
+      const defaultRoomName = `๛ Voice chat ឵឵𐐪𐑯 ${member.user.username}`;
+
       const userVoiceChannel = await guild.channels.create({
-        name: `🔪・Voice chat 🩸・${member.user.username}`,
+        name: defaultRoomName,
         type: ChannelType.GuildVoice,
         parent: parentCategory,
         userLimit: 0,
         permissionOverwrites: [
           {
             id: guild.id,
-            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ViewChannel],
           },
           {
             id: member.id,
-            allow: [PermissionFlagsBits.ManageChannel, PermissionFlagsBits.MoveMembers, PermissionFlagsBits.MuteMembers],
+            allow: [
+              PermissionFlagsBits.ManageChannel, 
+              PermissionFlagsBits.MoveMembers,
+              PermissionFlagsBits.MuteMembers,
+              PermissionFlagsBits.DeafenMembers
+            ],
           },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ManageChannel,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.Speak,
+              PermissionFlagsBits.MoveMembers,
+              PermissionFlagsBits.ViewChannel
+            ],
+          }
         ],
       });
 
-      await member.voice.setChannel(userVoiceChannel);
+      await member.voice.setChannel(userVoiceChannel).catch(() => {});
       activeTemporaryChannels.set(userVoiceChannel.id, member.id);
 
-      await member.send(`✨ **สร้างห้องส่วนตัวสำเร็จแล้วค่ะ!**\nคุณสามารถคลิกขวาที่ห้อง Voice ของคุณแล้วเลือก **"Edit Channel" (แก้ไขห้อง)** เพื่อเปลี่ยนชื่อตามใจชอบได้เลยนะคะ 🌸`).catch(() => {});
+      try {
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`rename_room_${userVoiceChannel.id}`)
+            .setLabel('💖 ตั้งชื่อห้องของคุณ')
+            .setStyle(ButtonStyle.Success)
+        );
+
+        await member.send({
+          content: `✨ **สร้างห้อง Voice ส่วนตัวสำเร็จแล้วค่ะ!**\nคุณสามารถกดปุ่มด้านล่างเพื่อเปลี่ยนชื่อห้องสไตล์น่ารักๆ ได้ตามใจชอบเลยนะคะ 🌸`,
+          components: [row]
+        });
+      } catch (e) {
+        console.log('ไม่สามารถส่ง DM หาผู้ใช้ได้ (DM อาจปิดอยู่)');
+      }
     } catch (err) {
       console.error('❌ ไม่สามารถสร้างห้อง Voice ชั่วคราวได้:', err);
     }
@@ -398,7 +429,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // ปุ่มกดสร้างห้อง HSHO -> เด้ง Modal ให้ผู้เล่นพิมพ์ตั้งชื่อห้อง
+  // ปุ่มกดสร้างห้อง HSHO -> เด้ง Modal ให้ผู้เล่นพิมพ์ตั้งชื่อห้อง (ไม่จำกัดจำนวนคน)
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
     const modal = new ModalBuilder()
       .setCustomId('modal_create_hsho_room')
@@ -480,6 +511,46 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply({ 
         content: `❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ: \`${err.message}\`\n👉 โปรดตรวจสอบว่าบอทมียศ **Administrator** หรือไม่นะคะ` 
       });
+    }
+  }
+
+  // กดปุ่มตั้งชื่อห้องจาก DM (สำหรับห้อง Join to Create)
+  if (interaction.isButton() && interaction.customId.startsWith('rename_room_')) {
+    const channelId = interaction.customId.replace('rename_room_', '');
+    
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_rename_${channelId}`)
+      .setTitle('✨ ตั้งชื่อห้อง Voice ของคุณ');
+
+    const nameInput = new TextInputBuilder()
+      .setCustomId('new_room_name')
+      .setLabel('พิมพ์ชื่อห้อง (เช่น ทีมตบผี หรือ เม้ามอย)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('พิมพ์ชื่อห้องที่นี่เลยค่ะ...')
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
+    return interaction.showModal(modal);
+  }
+
+  // รับค่าชื่อห้องใหม่จาก Modal แล้วเปลี่ยนชื่อห้อง Voice ทันทีตามสไตล์ Ref
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_rename_')) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    const channelId = interaction.customId.replace('modal_rename_', '');
+    const newName = interaction.fields.getTextInputValue('new_room_name');
+
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (channel) {
+        const formattedName = `╰ -💖 [ ${newName} ]`;
+        await channel.setName(formattedName);
+        return interaction.editReply({ content: `✅ **เปลี่ยนชื่อห้องเป็น "${formattedName}" เรียบร้อยแล้วค่ะ!** 🌸` });
+      } else {
+        return interaction.editReply({ content: '❌ ไม่พบห้อง Voice ดังกล่าว (ห้องอาจถูกปิดไปแล้ว)' });
+      }
+    } catch (err) {
+      return interaction.editReply({ content: `❌ ไม่สามารถเปลี่ยนชื่อห้องได้: ${err.message}` });
     }
   }
 
