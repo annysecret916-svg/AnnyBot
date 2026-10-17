@@ -22,7 +22,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// รองรับ Uptime Robot และเว็บตรวจสอบสถานะ
 app.get('/', (req, res) => {
   res.status(200).send('🤖 Bot Discord is running and alive 24/7!');
 });
@@ -63,7 +62,6 @@ app.get('/api/check-whitelist', async (req, res) => {
             return sheetDiscordId === String(discordId).trim();
         });
 
-        console.log(`[API Check] Discord ID: ${discordId} \vert{} Whitelist Status:${isFound}`);
         return res.json({ whitelisted: isFound });
     } catch (error) {
         console.error('[API Error] ไม่สามารถดึงข้อมูลจาก Google Sheet ได้:', error.message);
@@ -101,6 +99,7 @@ let configData = {
   goodbyeColor1: '#FF3366',
   goodbyeColor2: '#FF9900',
 
+  // ID ห้อง Voice ต้นแบบ Join to Create
   joinToCreateChannelId: '' 
 };
 
@@ -171,7 +170,7 @@ client.once('ready', async () => {
 });
 
 // ==========================================
-// ระบบ Voice Join to Create (แยกอิสระ: จอยห้องปุ๊บ สร้างห้องสไตล์ Ref + ส่ง DM ให้ตั้งชื่อ)
+// 1. ระบบ Voice Join to Create (แยกอิสระ: จอยห้องปุ๊บ สร้างห้องสไตล์ Ref + ส่ง DM ให้ตั้งชื่อ)
 // ==========================================
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const member = newState.member;
@@ -252,7 +251,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 // ==========================================
-// ระบบ Anti-Spam ข้อความ
+// ระบบ Anti-Spam
 // ==========================================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
@@ -284,7 +283,7 @@ client.on('messageCreate', async message => {
         const timeoutMinutes = 5 * Math.pow(2, offenses - 1);
         const timeoutDuration = timeoutMinutes * 60 * 1000;
 
-        await message.member.timeout(timeoutDuration, `Anti-Spam: ส่งข้อความซ้ำกันเกินกำหนด (ทำผิดครั้งที่ ${offenses})`);
+        await message.member.timeout(timeoutDuration, `Anti-Spam: ส่งข้อความซ้ำกันเกินกำหนด`);
 
         const warningMsg = await message.channel.send(`⚠️ <@${userId}> **คุณถูก Timeout ${timeoutMinutes} นาที เนื่องจากสแปมข้อความซ้ำกันค่ะ!**`);
         setTimeout(() => warningMsg.delete().catch(() => {}), 7000);
@@ -368,7 +367,7 @@ client.on('guildMemberRemove', async member => {
 });
 
 // ==========================================
-// ระบบ Interaction และปุ่มกดต่างๆ
+// ระบบ Interaction
 // ==========================================
 client.on('interactionCreate', async interaction => {
   if (interaction.isButton() || interaction.isModalSubmit()) {
@@ -415,7 +414,7 @@ client.on('interactionCreate', async interaction => {
 
     const embed = new EmbedBuilder()
       .setTitle('🎮 ──・[ HSHO : Room Creator Center ]・── 🧸')
-      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อตั้งชื่อและสร้างห้องเกมส่วนตัว (ไม่จำกัดจำนวนคน) ได้ทันที\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
+      .setDescription('✨ ยินดีต้อนรับสู่ระบบสร้างห้องเกมสุดพิเศษสำหรับชาว **Home Sweet Home Online** ค่ะ!\n\n> 🕹️ กดปุ่มด้านล่างเพื่อสร้างห้องเกมส่วนตัวทันที (ระบบจะสร้างห้องให้อัตโนมัติ)\n> 🔒 สำหรับตัวเลือกเกมอื่นๆ จะเปิดให้บริการเร็วๆนี้นะคะ (Soon..)\n\n💖 *ขอให้สนุกกับการเล่นเกมและพูดคุยกันอย่างมีความสุขนะคะ!*')
       .setColor('#ff6b81')
       .setTimestamp();
 
@@ -429,38 +428,16 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // ปุ่มกดสร้างห้อง HSHO -> เด้ง Modal ให้ผู้เล่นพิมพ์ตั้งชื่อห้อง (ไม่จำกัดจำนวนคน)
+  // 2. ปุ่มกดสร้างห้อง HSHO -> สร้างห้องทันทีแบบ 1-Click (ไม่เด้ง Modal)
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
-    const modal = new ModalBuilder()
-      .setCustomId('modal_create_hsho_room')
-      .setTitle('🔪 ตั้งชื่อห้อง Home Sweet Home Online');
-
-    const roomNameInput = new TextInputBuilder()
-      .setCustomId('hsho_room_name')
-      .setLabel('ชื่อห้อง Voice ตามใจคุณ (เช่น ทีมตบผีสุดโหด)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('พิมพ์ชื่อห้องที่ต้องการที่นี่เลยค่ะ...')
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(roomNameInput)
-    );
-
-    return interaction.showModal(modal);
-  }
-
-  // Modal Submit สร้างห้อง Voice ตามชื่อที่ผู้เล่นพิมพ์เข้ามา
-  if (interaction.isModalSubmit() && interaction.customId === 'modal_create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
-
-    const roomName = interaction.fields.getTextInputValue('hsho_room_name');
 
     try {
       const guild = interaction.guild;
       const member = interaction.member;
       const currentCategory = interaction.channel.parent;
 
-      const finalRoomName = `🔪・${roomName} 🩸・${member.user.username}`;
+      const finalRoomName = `🔪・Voice chat 🩸・${member.user.username}`;
 
       const hshoChannel = await guild.channels.create({
         name: finalRoomName,
@@ -502,19 +479,19 @@ client.on('interactionCreate', async interaction => {
 
       const successEmbed = new EmbedBuilder()
         .setTitle('🎉 สร้างห้องเกมสำเร็จแล้วค่ะ!')
-        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 ชื่อห้อง: **${roomName}**\n👥 จำนวนผู้เล่น: **ไม่จำกัดคน (Unlimited)**\n\n*ขอให้สนุกกับการเล่นเกมนะคะ!*`)
+        .setDescription(`✨ ห้องของคุณ: <#${hshoChannel.id}>\n🧸 หัวหน้าห้อง: <@${member.id}>\n👥 จำนวนผู้เล่น: **ไม่จำกัดคน (Unlimited)**\n\n*ขอให้สนุกกับการเล่นเกมนะคะ!*`)
         .setColor('#2ecc71');
 
       return interaction.editReply({ embeds: [successEmbed] });
     } catch (err) {
       console.error('❌ ไม่สามารถสร้างห้อง HSHO ได้:', err);
       return interaction.editReply({ 
-        content: `❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ: \`${err.message}\`\n👉 โปรดตรวจสอบว่าบอทมียศ **Administrator** หรือไม่นะคะ` 
+        content: `❌ เกิดข้อผิดพลาดในการสร้างห้องค่ะ: \`${err.message}\`` 
       });
     }
   }
 
-  // กดปุ่มตั้งชื่อห้องจาก DM (สำหรับห้อง Join to Create)
+  // 3. กดปุ่มตั้งชื่อห้องจาก DM (สำหรับห้อง Join to Create)
   if (interaction.isButton() && interaction.customId.startsWith('rename_room_')) {
     const channelId = interaction.customId.replace('rename_room_', '');
     
@@ -533,7 +510,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.showModal(modal);
   }
 
-  // รับค่าชื่อห้องใหม่จาก Modal แล้วเปลี่ยนชื่อห้อง Voice ทันทีตามสไตล์ Ref
+  // 4. รับค่าชื่อห้องใหม่จาก Modal แล้วเปลี่ยนชื่อห้อง Voice ทันทีตามสไตล์ Ref
   if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_rename_')) {
     await interaction.deferReply({ ephemeral: true });
     
