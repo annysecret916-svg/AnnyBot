@@ -186,7 +186,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         name: `🔪・Voice chat 🩸・${member.user.username}`,
         type: ChannelType.GuildVoice,
         parent: parentCategory,
-        userLimit: 0, // 0 หมายถึงไม่จำกัดจำนวนคน
+        userLimit: 0,
         permissionOverwrites: [
           {
             id: guild.id,
@@ -398,7 +398,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '✅ **ส่งแผงควบคุมระบบสร้างห้องสำเร็จแล้วค่ะ!** 🌸', ephemeral: true });
   }
 
-  // ปุ่มกดสร้างห้อง HSHO -> เด้ง Modal ให้ผู้เล่นพิมพ์ตั้งชื่อห้อง (ไม่จำกัดจำนวนคน)
+  // ปุ่มกดสร้างห้อง HSHO -> เด้ง Modal ให้ผู้เล่นพิมพ์ตั้งชื่อห้อง
   if (interaction.isButton() && interaction.customId === 'create_hsho_room') {
     const modal = new ModalBuilder()
       .setCustomId('modal_create_hsho_room')
@@ -418,7 +418,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.showModal(modal);
   }
 
-  // Modal Submit สร้างห้อง Voice ตามชื่อที่ผู้เล่นพิมพ์เข้ามา (ตั้ง userLimit เป็น 0 แบบไม่จำกัดคนอัตโนมัติ)
+  // Modal Submit สร้างห้อง Voice ตามชื่อที่ผู้เล่นพิมพ์เข้ามา
   if (interaction.isModalSubmit() && interaction.customId === 'modal_create_hsho_room') {
     await interaction.deferReply({ ephemeral: true });
 
@@ -435,7 +435,7 @@ client.on('interactionCreate', async interaction => {
         name: finalRoomName,
         type: ChannelType.GuildVoice,
         parent: currentCategory ? currentCategory.id : null,
-        userLimit: 0, // 0 = ไม่จำกัดจำนวนคนเข้าห้อง
+        userLimit: 0,
         permissionOverwrites: [
           {
             id: guild.id,
@@ -453,7 +453,7 @@ client.on('interactionCreate', async interaction => {
           {
             id: client.user.id,
             allow: [
-              PermissionFlagsBits.ManageChannels,
+              PermissionFlagsBits.ManageChannel,
               PermissionFlagsBits.Connect,
               PermissionFlagsBits.Speak,
               PermissionFlagsBits.MoveMembers,
