@@ -55,7 +55,7 @@ app.listen(PORT, () => {
   console.log(`🌐 Web server & API is running on port ${PORT}`);
 });
 
-const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbyvDdu395a1nY2xcC5BuctTnKct5aFh6IbS4Bf4MROUbB_PFLeX32n2uQrCOIXE2OH5/exec';
+const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwoO_mN0x7frzEDvKSK7TNn-OnVE0vsaMHeQSibLvAAT8Fa8gBDay0WHEZhYICHhTDp/exec';
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const WRITER_API_KEY = process.env.WRITER_API_KEY;
