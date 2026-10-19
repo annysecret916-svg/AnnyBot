@@ -38,30 +38,12 @@ app.get('/api/check-whitelist', async (req, res) => {
     }
 
     try {
-        const response = await axios.get(GOOGLE_SHEET_API_URL);
-        const data = response.data; 
-
-        let rows = [];
-        if (Array.isArray(data)) {
-            rows = data;
-        } else if (data && Array.isArray(data.data)) {
-            rows = data.data;
-        } else if (data && typeof data === 'object') {
-            rows = [data];
-        }
-
-        let isFound = rows.some(item => {
-            if (!item) return false;
-            const sheetDiscordId = String(
-                item.DiscordId || 
-                item['Discord ID'] || 
-                item.discordId || 
-                item['discord id'] || ''
-            ).trim();
-
-            return sheetDiscordId === String(discordId).trim();
+        const response = await axios.get(GOOGLE_SHEET_API_URL, {
+            params: { action: 'check', query: String(discordId).trim() },
+            timeout: 15000
         });
-
+        const isFound = response.data?.found === true &&
+            String(response.data?.data?.discordId || '').trim() === String(discordId).trim();
         return res.json({ whitelisted: isFound });
     } catch (error) {
         console.error('[API Error] ไม่สามารถดึงข้อมูลจาก Google Sheet ได้:', error.message);
@@ -76,6 +58,7 @@ app.listen(PORT, () => {
 const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbyvDdu395a1nY2xcC5BuctTnKct5aFh6IbS4Bf4MROUbB_PFLeX32n2uQrCOIXE2OH5/exec';
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
+const WRITER_API_KEY = process.env.WRITER_API_KEY;
 
 let configData = {
   verifiedRoleId: '', 
@@ -924,8 +907,17 @@ client.on('interactionCreate', async interaction => {
     const discordId = interaction.fields.getTextInputValue('discord_id_input');
     const discordTag = interaction.user.tag;
 
+    if (!WRITER_API_KEY) {
+      console.error('[Whitelist registration] WRITER_API_KEY is not configured.');
+      await interaction.editReply({ content: isThai ? '❌ ระบบยังไม่ได้ตั้งค่า WRITER_API_KEY บนบอทค่ะ' : '❌ WRITER_API_KEY is not configured for the bot.' });
+      return;
+    }
+
     try {
-      const response = await axios.post(GOOGLE_SHEET_API_URL, { steamName, steamId, discordId, discordTag });
+      const response = await axios.post(GOOGLE_SHEET_API_URL,
+        { apiKey: WRITER_API_KEY, steamName, steamId, discordId, discordTag },
+        { timeout: 15000 }
+      );
 
       if (response.data.status === 'success') {
         try {
@@ -942,11 +934,17 @@ client.on('interactionCreate', async interaction => {
       } else if (response.data.status === 'already_exists') {
         const msg = isThai ? '⚠️ **คุณได้ลงทะเบียนไปแล้วค่ะ!** ข้อมูลนี้มีในระบบแล้ว' : '⚠️ **Already registered!** Data already exists.';
         await interaction.editReply({ content: msg });
+      } else if (response.data.status === 'unauthorized') {
+        console.error('[Whitelist registration] Apps Script rejected WRITER_API_KEY.');
+        await interaction.editReply({ content: isThai ? '❌ คีย์เชื่อมต่อไม่ตรงกัน ให้ผู้ดูแลตรวจ WRITER_API_KEY ในบอทและ Apps Script' : '❌ Writer key mismatch. Ask an admin to check WRITER_API_KEY in the bot and Apps Script.' });
+      } else if (['invalid_input', 'invalid_steam_id'].includes(response.data.status)) {
+        await interaction.editReply({ content: isThai ? '❌ ข้อมูลไม่ถูกต้อง กรุณาตรวจ Steam Name, Steam ID และ Discord ID' : '❌ Invalid Steam/Discord registration details.' });
       } else {
+        console.error('[Whitelist registration] Apps Script returned status:', String(response.data.status || 'unknown'));
         await interaction.editReply({ content: isThai ? '❌ เกิดข้อผิดพลาดจากระบบ' : '❌ System error.' });
       }
     } catch (error) {
-      console.error(error);
+      console.error('[Whitelist registration] Request failed:', error.message);
       await interaction.editReply({ content: isThai ? '❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้' : '❌ Failed to connect database.' });
     }
   }
